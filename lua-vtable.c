@@ -183,7 +183,6 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
 
-    const char *module_name = "lua";
     status = luaL_dofile(L, filename);
     if(status) {
         if(err_out) {
@@ -192,6 +191,9 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
         lua_close(L);
         return SQLITE_ERROR;
     }
+
+    lua_getfield(L, -1, "name");
+    const char *module_name = lua_tostring(L, -1);
 
     sqlite3_module *script_module = sqlite3_malloc(sizeof(sqlite3_module));
     struct script_module_data *script_module_aux = sqlite3_malloc(sizeof(struct script_module_data));
@@ -209,7 +211,7 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
         cleanup_script_module);
 
     if(status == SQLITE_OK) {
-        lua_settop(L, 0);
+        lua_settop(L, 0); // clear Lua stack after create_module to make sure module_name is a valid pointer
     } else {
         sqlite3_free(script_module);
         sqlite3_free(script_module_aux);
