@@ -161,20 +161,48 @@ static sqlite3_module lua_vtable_module = {
     xRename: lua_vtable_rename,
 };
 
-int
-sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *api)
-{
-    SQLITE_EXTENSION_INIT2(api);
+struct script_module_data {
+    lua_State *L;
+    sqlite3_module *mod;
+};
 
+static void
+cleanup_script_module(void *_aux)
+{
+    struct script_module_data *aux = (struct script_module_data *) _aux;
+    lua_close(aux->L);
+    sqlite3_free(aux->mod);
+}
+
+static int
+create_module_from_script(sqlite3 *db, const char *filename)
+{
     lua_State *L;
 
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
 
+    const char *module_name = "lua";
+    sqlite3_module *script_module = sqlite3_malloc(sizeof(sqlite3_module));
+    struct script_module_data *script_module_aux = sqlite3_malloc(sizeof(struct script_module_data));
+
+    memcpy(script_module, &lua_vtable_module, sizeof(sqlite3_module));
+
+    script_module_aux->L = L;
+    script_module_aux->mod = script_module;
+
     return sqlite3_create_module_v2(
         db,
-        "lua",
-        &lua_vtable_module,
-        L,
-        (void (*)(void*)) lua_close);
+        module_name,
+        script_module,
+        script_module_aux,
+        cleanup_script_module);
+}
+
+int
+sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *api)
+{
+    SQLITE_EXTENSION_INIT2(api);
+
+    return create_module_from_script(db, "counter.lua");
 }
