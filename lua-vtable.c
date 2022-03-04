@@ -209,7 +209,10 @@ pop_nothing(lua_State *L, struct script_module_data *data, void *aux)
 static int
 lua_vtable_disconnect(sqlite3_vtab *vtab)
 {
-    return CALL_METHOD_VTAB(vtab, disconnect, 0, pop_nothing, NULL);
+    lua_State *L = VTAB_STATE(vtab);
+    int status = CALL_METHOD_VTAB(vtab, disconnect, 0, pop_nothing, NULL);
+    luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_vtab *) vtab)->vtab_ref);
+    return status;
 }
 
 static int
