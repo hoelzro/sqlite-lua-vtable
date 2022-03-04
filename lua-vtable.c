@@ -142,11 +142,21 @@ push_index_info(lua_State *L, sqlite3_index_info *info)
     lua_pushnil(L);
 }
 
-#define CALL_METHOD_VTAB(vtab, method_name, popper, popper_aux)\
-    call_method_vtab(vtab, vtab->aux->method_name##_ref, popper, popper_aux)
+static void
+pop_index_info(lua_State *L, struct script_module_data *data, void *aux)
+{
+    // XXX IMPL ME
+    lua_pop(L, 1);
+}
+
+#define VTAB_STATE(vtab)\
+    ((struct script_module_vtab *) vtab)->aux->L
+
+#define CALL_METHOD_VTAB(vtab, method_name, nargs, popper, popper_aux)\
+    call_method_vtab((struct script_module_vtab *) vtab, ((struct script_module_vtab *) vtab)->aux->method_name##_ref, nargs, popper, popper_aux)
 
 static int
-call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
+call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
 {
     struct script_module_data *aux = vtab->aux;
     lua_State *L = aux->L;
@@ -154,8 +164,8 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
     push_vtab(L, vtab);
-    // XXX currently no provision for other args :(
-    status = lua_pcall(L, 1, 2, 0);
+    lua_rotate(L, -2 - nargs, 2);
+    status = lua_pcall(L, nargs + 1, 2, 0);
 
     if(status == LUA_OK) {
         if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
@@ -184,36 +194,11 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)
 }
 
 static int
-lua_vtable_best_index(sqlite3_vtab *_vtab, sqlite3_index_info *info)
+lua_vtable_best_index(sqlite3_vtab *vtab, sqlite3_index_info *info)
 {
-    struct script_module_vtab *vtab = (struct script_module_vtab *) _vtab;
-    struct script_module_data *aux = vtab->aux;
-    lua_State *L = aux->L;
-    int status;
-
-    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->best_index_ref);
-    push_vtab(L, vtab);
+    lua_State *L = VTAB_STATE(vtab);
     push_index_info(L, info);
-    status = lua_pcall(L, 2, 2, 0);
-
-    if(status == LUA_OK) {
-        if(lua_isnil(L, -2)) { // XXX general falsiness instead?
-            // XXX clear me
-            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
-            lua_pop(L, 2);
-            return SQLITE_ERROR;
-        } else {
-            // XXX populate info with what's in the first return value
-            lua_pop(L, 2);
-            return SQLITE_OK;
-        }
-    }
-
-    // XXX clear me
-    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
-    lua_pop(L, 1);
-
-    return SQLITE_ERROR;
+    return CALL_METHOD_VTAB(vtab, best_index, 1, pop_index_info, info);
 }
 
 static int
@@ -272,7 +257,7 @@ lua_vtable_open(sqlite3_vtab *_vtab, sqlite3_vtab_cursor **cursor_out)
 {
     struct script_module_vtab *vtab = (struct script_module_vtab *) _vtab;
 
-    return CALL_METHOD_VTAB(vtab, open, pop_cursor, cursor_out);
+    return CALL_METHOD_VTAB(vtab, open, 0, pop_cursor, cursor_out);
 }
 
 static void
