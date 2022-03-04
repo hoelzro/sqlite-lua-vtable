@@ -164,6 +164,25 @@ static sqlite3_module lua_vtable_module = {
 struct script_module_data {
     lua_State *L;
     sqlite3_module *mod;
+
+    int create_ref;
+    int connect_ref;
+    int close_ref;
+    int rowid_ref;
+    int column_ref;
+    int next_ref;
+    int eof_ref;
+    int filter_ref;
+    int disconnect_ref;
+    int destroy_ref;
+    int open_ref;
+    int update_ref;
+    int begin_ref;
+    int sync_ref;
+    int commit_ref;
+    int rollback_ref;
+    int rename_ref;
+    int find_function_ref;
 };
 
 static void
@@ -199,6 +218,45 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
     struct script_module_data *script_module_aux = sqlite3_malloc(sizeof(struct script_module_data));
 
     memcpy(script_module, &lua_vtable_module, sizeof(sqlite3_module));
+
+    lua_getfield(L, -2, "connect");
+    lua_getfield(L, -3, "create");
+
+    // if create is nil, use NULL for xCreate to get that special behavior
+    if(lua_isnil(L, -1)) {
+        script_module->xCreate = NULL;
+    } else if(lua_rawequal(L, -1, -2)) {
+        // if create and connect are the same function, use the same C function
+        // pointer here to get that special behavior
+        script_module->xCreate = script_module->xConnect;
+    }
+
+    lua_pop(L, 2);
+
+#define METHOD_REF(name)\
+    lua_getfield(L, -2, #name);\
+    script_module_aux->name##_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    METHOD_REF(create);
+    METHOD_REF(connect);
+    METHOD_REF(close);
+    METHOD_REF(rowid);
+    METHOD_REF(column);
+    METHOD_REF(next);
+    METHOD_REF(eof);
+    METHOD_REF(filter);
+    METHOD_REF(disconnect);
+    METHOD_REF(destroy);
+    METHOD_REF(open);
+    METHOD_REF(update);
+    METHOD_REF(begin);
+    METHOD_REF(sync);
+    METHOD_REF(commit);
+    METHOD_REF(rollback);
+    METHOD_REF(rename);
+    METHOD_REF(find_function);
+
+#undef METHOD_REF
 
     script_module_aux->L = L;
     script_module_aux->mod = script_module;
