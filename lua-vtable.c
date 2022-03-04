@@ -48,6 +48,7 @@ struct script_module_data {
 
 struct script_module_vtab {
     sqlite3_vtab vtab;
+    struct script_module_data *aux;
     int vtab_ref;
 };
 
@@ -79,12 +80,19 @@ push_arg_strings(lua_State *L, int argc, const char * const *argv)
     }
 }
 
+static void
+push_vtab(lua_State *L, struct script_module_vtab *vtab)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, vtab->vtab_ref);
+}
+
 static sqlite3_vtab *
-pop_vtab(lua_State *L)
+pop_vtab(lua_State *L, struct script_module_data *aux)
 {
     struct script_module_vtab *vtab;
 
     vtab = sqlite3_malloc(sizeof(struct script_module_vtab));
+    vtab->aux = aux;
     vtab->vtab_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     return (sqlite3_vtab *) vtab;
 }
@@ -109,7 +117,7 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
-            *vtab_out = pop_vtab(L);
+            *vtab_out = pop_vtab(L, aux);
             return SQLITE_OK;
         }
     }
