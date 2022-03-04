@@ -70,4 +70,7 @@ function vtable.best_index(vtab, info)
   return true
 end
 
+function vtable.open(vtab)
+end
+
 return vtable

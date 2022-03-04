@@ -53,6 +53,12 @@ struct script_module_vtab {
     int vtab_ref;
 };
 
+struct script_module_cursor {
+    sqlite3_vtab_cursor cursor;
+    struct script_module_data *aux;
+    int cursor_ref;
+};
+
 static int
 lua_vtable_create(sqlite3 *db, void *aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
 {
@@ -208,9 +214,65 @@ lua_vtable_destroy(sqlite3_vtab *vtab)
 }
 
 static int
-lua_vtable_open(sqlite3_vtab *vtab, sqlite3_vtab_cursor **cursor_out)
+call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
 {
-    NYI();
+    struct script_module_data *aux = vtab->aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
+    push_vtab(L, vtab);
+    // XXX currently no provision for other args :(
+    status = lua_pcall(L, 1, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
+            if(vtab->vtab.zErrMsg) {
+                sqlite3_free(vtab->vtab.zErrMsg);
+            }
+            // XXX what if the value at the top of the stack isn't a string?
+            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 1);
+            popper(L, aux, popper_aux);
+            return SQLITE_OK;
+        }
+    }
+
+    if(vtab->vtab.zErrMsg) {
+        sqlite3_free(vtab->vtab.zErrMsg);
+    }
+    // XXX what if the value at the top of the stack isn't a string?
+    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
+}
+
+#define CALL_METHOD_VTAB(vtab, method_name, popper, popper_aux)\
+    call_method_vtab(vtab, vtab->aux->method_name##_ref, popper, popper_aux)
+
+static void
+pop_cursor(lua_State *L, struct script_module_data *data, void *aux)
+{
+    sqlite3_vtab_cursor **cursor_out = aux;
+    struct script_module_cursor *cursor;
+
+    cursor = sqlite3_malloc(sizeof(struct script_module_cursor));
+    cursor->aux = data;
+    cursor->cursor_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    *cursor_out = (sqlite3_vtab_cursor *) cursor;
+}
+
+static int
+lua_vtable_open(sqlite3_vtab *_vtab, sqlite3_vtab_cursor **cursor_out)
+{
+    struct script_module_vtab *vtab = (struct script_module_vtab *) _vtab;
+
+    return CALL_METHOD_VTAB(vtab, open, pop_cursor, cursor_out);
 }
 
 static int
