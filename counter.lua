@@ -73,4 +73,7 @@ end
 function vtable.open(vtab)
 end
 
+function vtable.filter(cursor, index_num, index_str, args)
+end
+
 return vtable

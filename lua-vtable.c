@@ -275,6 +275,91 @@ lua_vtable_open(sqlite3_vtab *_vtab, sqlite3_vtab_cursor **cursor_out)
     return CALL_METHOD_VTAB(vtab, open, pop_cursor, cursor_out);
 }
 
+static void
+push_cursor(lua_State *L, struct script_module_cursor *cursor)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, cursor->cursor_ref);
+}
+
+static void
+push_arg_values(lua_State *L, int argc, sqlite3_value **argv)
+{
+    int i;
+
+    lua_createtable(L, argc, 0);
+    for(i = 0; i < argc; i++) {
+        switch(sqlite3_value_type(argv[i])) {
+            case SQLITE_INTEGER:
+                lua_pushinteger(L, sqlite3_value_int(argv[i]));
+                break;
+            case SQLITE_FLOAT:
+                lua_pushnumber(L, sqlite3_value_double(argv[i]));
+                break;
+            case SQLITE_NULL:
+                lua_pushnil(L);
+                break;
+            case SQLITE_BLOB:
+            case SQLITE_TEXT: {
+                size_t length;
+
+                length = sqlite3_value_bytes(argv[i]);
+                lua_pushlstring(L, (const char *) sqlite3_value_text(argv[i]), length);
+                break;
+            }
+        }
+        lua_rawseti(L, -2, i + 1);
+    }
+}
+
+static void
+pop_nothing(lua_State *L, struct script_module_data *data, void *aux)
+{
+}
+
+static int
+call_method_cursor(struct script_module_cursor *cursor, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
+{
+    struct script_module_data *aux = cursor->aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
+    push_cursor(L, cursor);
+    lua_rotate(L, -2 - nargs, 2); // I *think* this is right?
+    status = lua_pcall(L, nargs + 1, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
+            if(cursor->cursor.pVtab->zErrMsg) {
+                sqlite3_free(cursor->cursor.pVtab->zErrMsg);
+            }
+            // XXX what if the value at the top of the stack isn't a string?
+            cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 1);
+            popper(L, aux, popper_aux);
+            return SQLITE_OK;
+        }
+    }
+
+    if(cursor->cursor.pVtab->zErrMsg) {
+        sqlite3_free(cursor->cursor.pVtab->zErrMsg);
+    }
+    // XXX what if the value at the top of the stack isn't a string?
+    cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
+}
+
+#define CURSOR_STATE(cursor)\
+    ((struct script_module_cursor *) cursor)->aux->L
+
+#define CALL_METHOD_CURSOR(cursor, method_name, nargs, popper, popper_aux)\
+    call_method_cursor((struct script_module_cursor *) cursor, ((struct script_module_cursor *)cursor)->aux->method_name##_ref, nargs, popper, popper_aux)
+
 static int
 lua_vtable_close(sqlite3_vtab_cursor *cursor)
 {
@@ -284,7 +369,13 @@ lua_vtable_close(sqlite3_vtab_cursor *cursor)
 static int
 lua_vtable_filter(sqlite3_vtab_cursor *cursor, int idx_num, const char *idx_str, int argc, sqlite3_value **argv)
 {
-    NYI();
+    lua_State *L = CURSOR_STATE(cursor);
+
+    lua_pushinteger(L, idx_num);
+    lua_pushstring(L, idx_str);
+    push_arg_values(L, argc, argv);
+
+    return CALL_METHOD_CURSOR(cursor, filter, 3, pop_nothing, NULL);
 }
 
 static int
