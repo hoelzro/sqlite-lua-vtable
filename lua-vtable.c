@@ -28,6 +28,7 @@ struct script_module_data {
 
     int create_ref;
     int connect_ref;
+    int best_index_ref;
     int close_ref;
     int rowid_ref;
     int column_ref;
@@ -128,10 +129,44 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
     return SQLITE_ERROR;
 }
 
-static int
-lua_vtable_best_index(sqlite3_vtab *vtab, sqlite3_index_info *info)
+static void
+push_index_info(lua_State *L, sqlite3_index_info *info)
 {
-    NYI();
+    // XXX IMPL ME
+    lua_pushnil(L);
+}
+
+static int
+lua_vtable_best_index(sqlite3_vtab *_vtab, sqlite3_index_info *info)
+{
+    struct script_module_vtab *vtab = (struct script_module_vtab *) _vtab;
+    struct script_module_data *aux = vtab->aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->best_index_ref);
+    push_vtab(L, vtab);
+    push_index_info(L, info);
+    status = lua_pcall(L, 2, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2)) { // XXX general falsiness instead?
+            // XXX clear me
+            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            // XXX populate info with what's in the first return value
+            lua_pop(L, 2);
+            return SQLITE_OK;
+        }
+    }
+
+    // XXX clear me
+    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
 }
 
 static int
@@ -377,6 +412,7 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
 
     METHOD_REF(create);
     METHOD_REF(connect);
+    METHOD_REF(best_index);
     METHOD_REF(close);
     METHOD_REF(rowid);
     METHOD_REF(column);

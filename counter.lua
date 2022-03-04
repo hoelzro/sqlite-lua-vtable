@@ -66,4 +66,8 @@ vtable.connect = vtable.create
 function vtable.disconnect(vtab)
 end
 
+function vtable.best_index(vtab, info)
+  return true
+end
+
 return vtable
