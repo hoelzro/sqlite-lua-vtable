@@ -142,6 +142,47 @@ push_index_info(lua_State *L, sqlite3_index_info *info)
     lua_pushnil(L);
 }
 
+#define CALL_METHOD_VTAB(vtab, method_name, popper, popper_aux)\
+    call_method_vtab(vtab, vtab->aux->method_name##_ref, popper, popper_aux)
+
+static int
+call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
+{
+    struct script_module_data *aux = vtab->aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
+    push_vtab(L, vtab);
+    // XXX currently no provision for other args :(
+    status = lua_pcall(L, 1, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
+            if(vtab->vtab.zErrMsg) {
+                sqlite3_free(vtab->vtab.zErrMsg);
+            }
+            // XXX what if the value at the top of the stack isn't a string?
+            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 1);
+            popper(L, aux, popper_aux);
+            return SQLITE_OK;
+        }
+    }
+
+    if(vtab->vtab.zErrMsg) {
+        sqlite3_free(vtab->vtab.zErrMsg);
+    }
+    // XXX what if the value at the top of the stack isn't a string?
+    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
+}
+
 static int
 lua_vtable_best_index(sqlite3_vtab *_vtab, sqlite3_index_info *info)
 {
@@ -212,47 +253,6 @@ lua_vtable_destroy(sqlite3_vtab *vtab)
 {
     NYI();
 }
-
-static int
-call_method_vtab(struct script_module_vtab *vtab, int method_ref, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
-{
-    struct script_module_data *aux = vtab->aux;
-    lua_State *L = aux->L;
-    int status;
-
-    lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
-    push_vtab(L, vtab);
-    // XXX currently no provision for other args :(
-    status = lua_pcall(L, 1, 2, 0);
-
-    if(status == LUA_OK) {
-        if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
-            if(vtab->vtab.zErrMsg) {
-                sqlite3_free(vtab->vtab.zErrMsg);
-            }
-            // XXX what if the value at the top of the stack isn't a string?
-            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
-            lua_pop(L, 2);
-            return SQLITE_ERROR;
-        } else {
-            lua_pop(L, 1);
-            popper(L, aux, popper_aux);
-            return SQLITE_OK;
-        }
-    }
-
-    if(vtab->vtab.zErrMsg) {
-        sqlite3_free(vtab->vtab.zErrMsg);
-    }
-    // XXX what if the value at the top of the stack isn't a string?
-    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
-    lua_pop(L, 1);
-
-    return SQLITE_ERROR;
-}
-
-#define CALL_METHOD_VTAB(vtab, method_name, popper, popper_aux)\
-    call_method_vtab(vtab, vtab->aux->method_name##_ref, popper, popper_aux)
 
 static void
 pop_cursor(lua_State *L, struct script_module_data *data, void *aux)
