@@ -22,6 +22,35 @@ sqlite_lua_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
     fprintf(stderr, "Module method %s not yet implemented\n", __func__);\
     return SQLITE_ERROR;
 
+struct script_module_data {
+    lua_State *L;
+    sqlite3_module *mod;
+
+    int create_ref;
+    int connect_ref;
+    int close_ref;
+    int rowid_ref;
+    int column_ref;
+    int next_ref;
+    int eof_ref;
+    int filter_ref;
+    int disconnect_ref;
+    int destroy_ref;
+    int open_ref;
+    int update_ref;
+    int begin_ref;
+    int sync_ref;
+    int commit_ref;
+    int rollback_ref;
+    int rename_ref;
+    int find_function_ref;
+};
+
+struct script_module_vtab {
+    sqlite3_vtab vtab;
+    int vtab_ref;
+};
+
 static int
 lua_vtable_create(sqlite3 *db, void *aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
 {
@@ -29,11 +58,66 @@ lua_vtable_create(sqlite3 *db, void *aux, int argc, const char * const *argv, sq
     NYI();
 }
 
-static int
-lua_vtable_connect(sqlite3 *db, void *aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
+static void
+push_db(lua_State *L, sqlite3 *db)
 {
-    *err_out = sqlite3_mprintf("Module method %s not yet implemented", __func__);
-    NYI();
+    sqlite3 **lua_db = lua_newuserdata(L, sizeof(sqlite3 *));
+    *lua_db = db;
+    luaL_getmetatable(L, "sqlite3*");
+    lua_setmetatable(L, -2);
+}
+
+static void
+push_arg_strings(lua_State *L, int argc, const char * const *argv)
+{
+    int i;
+
+    lua_createtable(L, argc, 0);
+    for(i = 0; i < argc; i++) {
+        lua_pushstring(L, argv[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+}
+
+static sqlite3_vtab *
+pop_vtab(lua_State *L)
+{
+    struct script_module_vtab *vtab;
+
+    vtab = sqlite3_malloc(sizeof(struct script_module_vtab));
+    vtab->vtab_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    return (sqlite3_vtab *) vtab;
+}
+
+static int
+lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
+{
+    struct script_module_data *aux = (struct script_module_data *) _aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->connect_ref);
+    push_db(L, db);
+    push_arg_strings(L, argc, argv);
+    status = lua_pcall(L, 2, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2)) { // XXX general falsiness instead?
+            // XXX what if no values are returned?
+            *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 1);
+            *vtab_out = pop_vtab(L);
+            return SQLITE_OK;
+        }
+    }
+
+    *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
 }
 
 static int
@@ -161,36 +245,54 @@ static sqlite3_module lua_vtable_module = {
     xRename: lua_vtable_rename,
 };
 
-struct script_module_data {
-    lua_State *L;
-    sqlite3_module *mod;
-
-    int create_ref;
-    int connect_ref;
-    int close_ref;
-    int rowid_ref;
-    int column_ref;
-    int next_ref;
-    int eof_ref;
-    int filter_ref;
-    int disconnect_ref;
-    int destroy_ref;
-    int open_ref;
-    int update_ref;
-    int begin_ref;
-    int sync_ref;
-    int commit_ref;
-    int rollback_ref;
-    int rename_ref;
-    int find_function_ref;
-};
-
 static void
 cleanup_script_module(void *_aux)
 {
     struct script_module_data *aux = (struct script_module_data *) _aux;
     lua_close(aux->L);
     sqlite3_free(aux->mod);
+}
+
+static sqlite3 *
+to_sqlite3(lua_State *L, int idx)
+{
+    return *((sqlite3 **) luaL_checkudata(L, idx, "sqlite3*"));
+}
+
+static int
+lua_sqlite3_declare_vtab(lua_State *L)
+{
+    sqlite3 *db;
+    const char *sql;
+    int status;
+
+    db = to_sqlite3(L, 1);
+    sql = luaL_checkstring(L, 2);
+
+    status = sqlite3_declare_vtab(db, sql);
+
+    if(status == SQLITE_OK) {
+        lua_pushboolean(L, 1);
+        return 1;
+    } else {
+        lua_pushnil(L);
+        lua_pushstring(L, sqlite3_errstr(status));
+        return 2;
+    }
+}
+
+static luaL_Reg lua_sqlite3_methods[] = {
+    {"declare_vtab", lua_sqlite3_declare_vtab},
+    {NULL, NULL},
+};
+
+static void
+set_up_metatables(lua_State *L)
+{
+    luaL_newmetatable(L, "sqlite3*");
+    luaL_newlib(L, lua_sqlite3_methods);
+    lua_setfield(L, -2, "__index");
+    lua_pop(L, 1);
 }
 
 static int
@@ -201,6 +303,8 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
 
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
+
+    set_up_metatables(L);
 
     status = luaL_dofile(L, filename);
     if(status) {
