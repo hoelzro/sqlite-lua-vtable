@@ -71,6 +71,10 @@ function vtable.best_index(vtab, info)
 end
 
 function vtable.open(vtab)
+  return {
+    n = 1,
+    max = 10,
+  }
 end
 
 function vtable.filter(cursor, index_num, index_str, args)
@@ -78,9 +82,11 @@ function vtable.filter(cursor, index_num, index_str, args)
 end
 
 function vtable.eof(cursor)
-  print 'in eof'
-  print(cursor)
-  return true
+  return cursor.n > cursor.max
+end
+
+function vtable.column(cursor, n)
+  return cursor.n
 end
 
 function vtable.close(cursor)
