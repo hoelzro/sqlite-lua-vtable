@@ -89,6 +89,10 @@ function vtable.column(cursor, n)
   return cursor.n
 end
 
+function vtable.next(cursor)
+  cursor.n = cursor.n + 1
+end
+
 function vtable.close(cursor)
   print 'in close'
 end

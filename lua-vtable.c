@@ -384,7 +384,7 @@ lua_vtable_filter(sqlite3_vtab_cursor *cursor, int idx_num, const char *idx_str,
 static int
 lua_vtable_next(sqlite3_vtab_cursor *cursor)
 {
-    NYI();
+    return CALL_METHOD_CURSOR(cursor, next, 0, pop_nothing, NULL);
 }
 
 static void
