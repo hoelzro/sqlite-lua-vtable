@@ -135,9 +135,35 @@ lua_vtable_best_index(sqlite3_vtab *vtab, sqlite3_index_info *info)
 }
 
 static int
-lua_vtable_disconnect(sqlite3_vtab *vtab)
+lua_vtable_disconnect(sqlite3_vtab *_vtab)
 {
-    NYI();
+    struct script_module_vtab *vtab = (struct script_module_vtab *) _vtab;
+    struct script_module_data *aux = vtab->aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->disconnect_ref);
+    push_vtab(L, vtab);
+    status = lua_pcall(L, 1, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2) && !lua_isnil(L, -1)) { // XXX general falsiness instead?
+            // XXX coercing non-strings to strings
+            // XXX clear me
+            vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 2);
+            return SQLITE_OK;
+        }
+    }
+
+    // XXX clear me
+    vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
 }
 
 static int

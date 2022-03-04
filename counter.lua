@@ -63,4 +63,7 @@ end
 
 vtable.connect = vtable.create
 
+function vtable.disconnect(vtab)
+end
+
 return vtable
