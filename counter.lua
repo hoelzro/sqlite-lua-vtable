@@ -74,6 +74,17 @@ function vtable.open(vtab)
 end
 
 function vtable.filter(cursor, index_num, index_str, args)
+  print 'in filter'
+end
+
+function vtable.eof(cursor)
+  print 'in eof'
+  print(cursor)
+  return true
+end
+
+function vtable.close(cursor)
+  print 'in close'
 end
 
 return vtable

@@ -363,7 +363,10 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
 static int
 lua_vtable_close(sqlite3_vtab_cursor *cursor)
 {
-    NYI();
+    lua_State *L = CURSOR_STATE(cursor);
+    int status = CALL_METHOD_CURSOR(cursor, close, 0, pop_nothing, NULL);
+    luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_cursor *)cursor)->cursor_ref);
+    return status;
 }
 
 static int
@@ -384,10 +387,20 @@ lua_vtable_next(sqlite3_vtab_cursor *cursor)
     NYI();
 }
 
+static void
+pop_bool(lua_State *L, struct script_module_data *data, void *aux)
+{
+    int *result_out = (int *) aux;
+    *result_out = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+}
+
 static int
 lua_vtable_eof(sqlite3_vtab_cursor *cursor)
 {
-    NYI();
+    int result;
+    CALL_METHOD_CURSOR(cursor, eof, 0, pop_bool, &result);
+    return result;
 }
 
 static int
