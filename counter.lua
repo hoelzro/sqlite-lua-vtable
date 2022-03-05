@@ -67,7 +67,9 @@ function vtable.disconnect(vtab)
 end
 
 function vtable.best_index(vtab, info)
-  return true
+  return {
+    constraint_usage = {},
+  }
 end
 
 function vtable.open(vtab)

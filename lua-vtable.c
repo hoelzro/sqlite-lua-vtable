@@ -138,14 +138,112 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
 static void
 push_index_info(lua_State *L, sqlite3_index_info *info)
 {
-    // XXX IMPL ME
-    lua_pushnil(L);
+    int i;
+
+    lua_createtable(L, 0, 2);
+    lua_createtable(L, info->nConstraint, 0);
+    for(i = 0; i < info->nConstraint; i++) {
+        lua_createtable(L, 0, 3);
+
+        lua_pushinteger(L, info->aConstraint[i].iColumn);
+        lua_setfield(L, -2, "column");
+
+        // XXX push a string instead?
+        lua_pushinteger(L, info->aConstraint[i].op);
+        lua_setfield(L, -2, "op");
+
+        lua_pushboolean(L, info->aConstraint[i].usable);
+        lua_setfield(L, -2, "usable");
+
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "constraints");
+
+    lua_createtable(L, info->nOrderBy, 0);
+    for(i = 0; i < info->nOrderBy; i++) {
+        lua_createtable(L, 0, 2);
+
+        lua_pushinteger(L, info->aOrderBy[i].iColumn);
+        lua_setfield(L, -2, "column");
+
+        lua_pushboolean(L, info->aOrderBy[i].desc);
+        lua_setfield(L, -2, "desc");
+
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "order_by");
 }
 
 static void
 pop_index_info(lua_State *L, struct script_module_data *data, void *aux)
 {
-    // XXX IMPL ME
+    sqlite3_index_info *info = (sqlite3_index_info *) aux;
+    int i;
+
+    lua_getfield(L, -1, "constraint_usage");
+    lua_len(L, -1);
+    int returned_constraint_usage_len = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+
+    // XXX test that returning a short table is OK
+    for(i = 0; i < info->nConstraint && (i+1) <= returned_constraint_usage_len; i++) {
+        lua_rawgeti(L, -1, i + 1);
+
+        lua_getfield(L, -1, "argv_index");
+        if(!lua_isnil(L, -1)) {
+            info->aConstraintUsage[i].argvIndex = lua_tointeger(L, -1);
+        }
+        lua_pop(L, 1);
+
+        lua_getfield(L, -1, "omit");
+        info->aConstraintUsage[i].omit = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "index_num");
+    if(!lua_isnil(L, -1)) {
+        info->idxNum = lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "index_str");
+    if(!lua_isnil(L, -1)) {
+        info->idxStr = sqlite3_mprintf("%s", lua_tostring(L, -1));
+        info->needToFreeIdxStr = 1;
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "order_by_consumed");
+    info->orderByConsumed = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "estimated_cost");
+    if(!lua_isnil(L, -1)) {
+        info->estimatedCost = lua_tonumber(L, -1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "estimated_rows");
+    if(!lua_isnil(L, -1)) {
+        info->estimatedRows = lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "index_flags");
+    if(!lua_isnil(L, -1)) {
+        info->idxFlags = lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "column_used");
+    if(!lua_isnil(L, -1)) {
+        info->colUsed = lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+
     lua_pop(L, 1);
 }
 
