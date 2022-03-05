@@ -59,13 +59,6 @@ struct script_module_cursor {
     int cursor_ref;
 };
 
-static int
-lua_vtable_create(sqlite3 *db, void *aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
-{
-    *err_out = sqlite3_mprintf("Module method %s not yet implemented", __func__);
-    NYI();
-}
-
 static void
 push_db(lua_State *L, sqlite3 *db)
 {
@@ -102,6 +95,37 @@ pop_vtab(lua_State *L, struct script_module_data *aux)
     vtab->aux = aux;
     vtab->vtab_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     return (sqlite3_vtab *) vtab;
+}
+
+static int
+lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
+{
+    struct script_module_data *aux = (struct script_module_data *) _aux;
+    lua_State *L = aux->L;
+    int status;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->create_ref);
+    push_db(L, db);
+    push_arg_strings(L, argc, argv);
+    status = lua_pcall(L, 2, 2, 0);
+
+    if(status == LUA_OK) {
+        if(lua_isnil(L, -2)) { // XXX general falsiness instead?
+            // XXX what if no values are returned?
+            *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            return SQLITE_ERROR;
+        } else {
+            lua_pop(L, 1);
+            *vtab_out = pop_vtab(L, aux);
+            return SQLITE_OK;
+        }
+    }
+
+    *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
+    lua_pop(L, 1);
+
+    return SQLITE_ERROR;
 }
 
 static int
