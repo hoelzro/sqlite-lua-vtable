@@ -602,6 +602,34 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
 
 #undef METHOD_REF
 
+    if(script_module_aux->update_ref == LUA_REFNIL) {
+        script_module->xUpdate = NULL;
+    }
+
+    if(script_module_aux->begin_ref == LUA_REFNIL) {
+        script_module->xBegin = NULL;
+    }
+
+    if(script_module_aux->sync_ref == LUA_REFNIL) {
+        script_module->xSync = NULL;
+    }
+
+    if(script_module_aux->commit_ref == LUA_REFNIL) {
+        script_module->xCommit = NULL;
+    }
+
+    if(script_module_aux->rollback_ref == LUA_REFNIL) {
+        script_module->xRollback = NULL;
+    }
+
+    if(script_module_aux->rename_ref == LUA_REFNIL) {
+        script_module->xRename = NULL;
+    }
+
+    if(script_module_aux->find_function_ref == LUA_REFNIL) {
+        script_module->xFindFunction = NULL;
+    }
+
     script_module_aux->L = L;
     script_module_aux->mod = script_module;
 
