@@ -564,25 +564,25 @@ lua_vtable_update(sqlite3_vtab *vtab, int argc, sqlite3_value **argv, sqlite_int
 static int
 lua_vtable_begin(sqlite3_vtab *vtab)
 {
-    NYI();
+    return CALL_METHOD_VTAB(vtab, begin, 0, pop_nothing, NULL);
 }
 
 static int
 lua_vtable_sync(sqlite3_vtab *vtab)
 {
-    NYI();
+    return CALL_METHOD_VTAB(vtab, sync, 0, pop_nothing, NULL);
 }
 
 static int
 lua_vtable_commit(sqlite3_vtab *vtab)
 {
-    NYI();
+    return CALL_METHOD_VTAB(vtab, commit, 0, pop_nothing, NULL);
 }
 
 static int
 lua_vtable_rollback(sqlite3_vtab *vtab)
 {
-    NYI();
+    return CALL_METHOD_VTAB(vtab, rollback, 0, pop_nothing, NULL);
 }
 
 static int

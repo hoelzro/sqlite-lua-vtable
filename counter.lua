@@ -107,4 +107,16 @@ function vtable.update(vtab, args)
   return args[2]
 end
 
+function vtable.begin()
+end
+
+function vtable.commit()
+end
+
+function vtable.rollback()
+end
+
+function vtable.sync()
+end
+
 return vtable
