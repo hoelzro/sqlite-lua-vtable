@@ -594,7 +594,9 @@ lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (*
 static int
 lua_vtable_rename(sqlite3_vtab *vtab, const char *new_name)
 {
-    NYI();
+    lua_State *L = VTAB_STATE(vtab);
+    lua_pushstring(L, new_name);
+    return CALL_METHOD_VTAB(vtab, rename, 1, pop_nothing, NULL);
 }
 
 static sqlite3_module lua_vtable_module = {
