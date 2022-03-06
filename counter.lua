@@ -99,4 +99,8 @@ function vtable.close(cursor)
   print 'in close'
 end
 
+function vtable.rowid(cursor)
+  return cursor.n
+end
+
 return vtable

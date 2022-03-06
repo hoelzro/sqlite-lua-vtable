@@ -538,10 +538,19 @@ lua_vtable_column(sqlite3_vtab_cursor *cursor, sqlite3_context *ctx, int n)
     return CALL_METHOD_CURSOR(cursor, column, 1, pop_sqlite_value, ctx);
 }
 
+static void
+pop_int64(lua_State *L, struct script_module_data *data, void *aux)
+{
+    sqlite_int64 *out = (sqlite_int64 *) aux;
+
+    *out = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+}
+
 static int
 lua_vtable_rowid(sqlite3_vtab_cursor *cursor, sqlite_int64 *rowid_out)
 {
-    NYI();
+    return CALL_METHOD_CURSOR(cursor, rowid, 0, pop_int64, rowid_out);
 }
 
 static int
