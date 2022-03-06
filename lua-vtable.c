@@ -18,10 +18,6 @@ sqlite_lua_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
     return sqlite3_realloc(ptr, nsize);
 }
 
-#define NYI()\
-    fprintf(stderr, "Module method %s not yet implemented\n", __func__);\
-    return SQLITE_ERROR;
-
 struct script_module_data {
     lua_State *L;
     sqlite3_module *mod;
@@ -585,10 +581,131 @@ lua_vtable_rollback(sqlite3_vtab *vtab)
     return CALL_METHOD_VTAB(vtab, rollback, 0, pop_nothing, NULL);
 }
 
-static int
-lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (**func_out)(sqlite3_context*,int,sqlite3_value**), void **argv)
+static void
+pop_function(lua_State *L, struct script_module_data *data, void *aux)
 {
-    NYI();
+    int *ref = aux;
+
+    *ref = LUA_REFNIL;
+    if(lua_isfunction(L, -1)) {
+        *ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    lua_pop(L, 1);
+}
+
+struct caller_args {
+    lua_State *L;
+    int function_ref;
+};
+
+static void
+lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+{
+    struct caller_args *args = sqlite3_user_data(ctx);
+    lua_State *L = args->L;
+    int i;
+    int status;
+
+    if(!lua_checkstack(L, argc + 1)) {
+        sqlite3_result_error_nomem(ctx);
+        return;
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, args->function_ref);
+
+    // XXX duplication with push_arg_values
+    for(i = 0; i < argc; i++) {
+        switch(sqlite3_value_type(argv[i])) {
+            case SQLITE_INTEGER:
+                lua_pushinteger(L, sqlite3_value_int(argv[i]));
+                break;
+            case SQLITE_FLOAT:
+                lua_pushnumber(L, sqlite3_value_double(argv[i]));
+                break;
+            case SQLITE_NULL:
+                lua_pushnil(L);
+                break;
+            case SQLITE_BLOB:
+            case SQLITE_TEXT: {
+                size_t length;
+
+                length = sqlite3_value_bytes(argv[i]);
+                lua_pushlstring(L, (const char *) sqlite3_value_text(argv[i]), length);
+                break;
+            default:
+            }
+        }
+    }
+
+    status = lua_pcall(L, argc, 1, 0);
+    if(status != LUA_OK) {
+        sqlite3_result_error(ctx, lua_tostring(L, -1), -1);
+        lua_pop(L, 1);
+        return;
+    }
+
+    // XXX duplication with pop_sqlite_value
+    switch(lua_type(L, -1)) {
+        case LUA_TSTRING: {
+            size_t length;
+            const char *value;
+
+            value = lua_tolstring(L, -1, &length);
+
+            sqlite3_result_text(ctx, value, length, SQLITE_TRANSIENT);
+            break;
+        }
+        case LUA_TNUMBER:
+            sqlite3_result_double(ctx, lua_tonumber(L, -1));
+            break;
+        case LUA_TBOOLEAN:
+            sqlite3_result_int(ctx, lua_toboolean(L, -1));
+            break;
+        case LUA_TNIL:
+            sqlite3_result_null(ctx);
+            break;
+
+        case LUA_TTABLE:
+        case LUA_TFUNCTION:
+        case LUA_TTHREAD:
+        case LUA_TUSERDATA: {
+            char *error = NULL;
+
+            error = sqlite3_mprintf("Invalid return type from lua(): %s", lua_typename(L, lua_type(L, -1)));
+
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+        }
+    }
+    lua_pop(L, 1);
+}
+
+static int
+lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (**func_out)(sqlite3_context*,int,sqlite3_value**), void **arg_out)
+{
+    lua_State *L = VTAB_STATE(vtab);
+    int function_ref;
+
+    lua_pushinteger(L, argc);
+    lua_pushstring(L, name);
+    int status = CALL_METHOD_VTAB(vtab, find_function, 2, pop_function, &function_ref);
+
+    if(status != SQLITE_OK) {
+        // XXX we have no way to signal an error, do we?
+        return 0;
+    }
+
+    if(function_ref == LUA_REFNIL) {
+        return 0;
+    }
+
+    struct caller_args *args = sqlite3_malloc(sizeof(struct caller_args));
+    args->L = L;
+    args->function_ref = function_ref;
+
+    *func_out = lua_function_caller;
+    *arg_out = args;
 }
 
 static int

@@ -119,4 +119,17 @@ end
 function vtable.sync()
 end
 
+function vtable.find_function(vtab, argc, name)
+  print(string.format('in find_function (argc = %d, name = %s)', argc, name))
+  return function(lhs, rhs)
+    local op
+    if lhs == 'odd' then
+      op = 1
+    elseif lhs == 'even' then
+      op = 0
+    end
+    return (rhs % 2) == op
+  end
+end
+
 return vtable
