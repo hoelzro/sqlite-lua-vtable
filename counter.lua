@@ -103,4 +103,8 @@ function vtable.rowid(cursor)
   return cursor.n
 end
 
+function vtable.update(vtab, args)
+  return args[2]
+end
+
 return vtable

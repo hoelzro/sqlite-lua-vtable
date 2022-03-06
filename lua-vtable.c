@@ -554,9 +554,11 @@ lua_vtable_rowid(sqlite3_vtab_cursor *cursor, sqlite_int64 *rowid_out)
 }
 
 static int
-lua_vtable_update(sqlite3_vtab *vtab, int argc, sqlite3_value **argv, sqlite_int64 *rowid)
+lua_vtable_update(sqlite3_vtab *vtab, int argc, sqlite3_value **argv, sqlite_int64 *rowid_out)
 {
-    NYI();
+    lua_State *L = VTAB_STATE(vtab);
+    push_arg_values(L, argc, argv);
+    return CALL_METHOD_VTAB(vtab, update, 1, pop_int64, rowid_out);
 }
 
 static int
