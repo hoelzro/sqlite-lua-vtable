@@ -789,11 +789,14 @@ set_up_metatables(lua_State *L)
     lua_pop(L, 1);
 }
 
-static int
-create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
+static void
+create_module_from_script(sqlite3_context *ctx, int argc, sqlite3_value **argv)
 {
     lua_State *L;
     int status;
+
+    sqlite3 *db = sqlite3_context_db_handle(ctx);
+    const char *filename = sqlite3_value_text(argv[0]);
 
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
@@ -802,11 +805,9 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
 
     status = luaL_dofile(L, filename);
     if(status) {
-        if(err_out) {
-            *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
-        }
+        sqlite3_result_error(ctx, lua_tostring(L, -1), -1);
         lua_close(L);
-        return SQLITE_ERROR;
+        return;
     }
 
     lua_getfield(L, -1, "name");
@@ -898,12 +899,11 @@ create_module_from_script(sqlite3 *db, const char *filename, char **err_out)
     if(status == SQLITE_OK) {
         lua_settop(L, 0); // clear Lua stack after create_module to make sure module_name is a valid pointer
     } else {
+        sqlite3_result_error_code(ctx, status);
         sqlite3_free(script_module);
         sqlite3_free(script_module_aux);
         lua_close(L);
     }
-
-    return status;
 }
 
 int
@@ -911,5 +911,6 @@ sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *ap
 {
     SQLITE_EXTENSION_INIT2(api);
 
-    return create_module_from_script(db, "counter.lua", error);
+    sqlite3_create_function(db, "lua_create_module_from_file", 1, SQLITE_UTF8,
+        NULL, create_module_from_script, NULL, NULL);
 }
