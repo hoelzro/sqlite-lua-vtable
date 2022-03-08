@@ -1,4 +1,4 @@
-.PHONY: default
+.PHONY: default test
 
 CFLAGS+=-fPIC
 LIBS+=-llua
@@ -10,6 +10,12 @@ default: lua-vtable.so
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^
+
+test:
+	for sql in tests/*.sql; do                                        \
+		sqlite3 :memory: ".read $$sql"                          ; \
+		diff -q testcase-out.txt tests/$$(basename $$sql .sql).output ; \
+	done
 
 clean:
 	rm -f *.o *.so
