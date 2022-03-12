@@ -775,8 +775,17 @@ lua_sqlite3_declare_vtab(lua_State *L)
     }
 }
 
+static int
+lua_sqlite3_get_ptr(lua_State *L)
+{
+    // XXX how can you be sure the SQLite versions match?
+    lua_pushlightuserdata(L, to_sqlite3(L, 1));
+    return 1;
+}
+
 static luaL_Reg lua_sqlite3_methods[] = {
     {"declare_vtab", lua_sqlite3_declare_vtab},
+    {"get_ptr", lua_sqlite3_get_ptr},
     {NULL, NULL},
 };
 
