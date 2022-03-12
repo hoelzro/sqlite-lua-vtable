@@ -910,6 +910,7 @@ int
 sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *api)
 {
     SQLITE_EXTENSION_INIT2(api);
+    sqlite3_initialize();
 
     sqlite3_create_function(db, "lua_create_module_from_file", 1, SQLITE_UTF8,
         NULL, create_module_from_script, NULL, NULL);
