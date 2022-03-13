@@ -168,8 +168,60 @@ push_index_info(lua_State *L, sqlite3_index_info *info)
         lua_pushinteger(L, info->aConstraint[i].iColumn);
         lua_setfield(L, -2, "column");
 
-        // XXX push a string instead?
-        lua_pushinteger(L, info->aConstraint[i].op);
+        switch(info->aConstraint[i].op) {
+            case SQLITE_INDEX_CONSTRAINT_EQ:
+                lua_pushliteral(L, "=");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_GT:
+                lua_pushliteral(L, ">");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_LE:
+                lua_pushliteral(L, "<=");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_LT:
+                lua_pushliteral(L, "<");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_GE:
+                lua_pushliteral(L, ">=");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_MATCH:
+                lua_pushliteral(L, "match");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_LIKE:
+                lua_pushliteral(L, "like");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_GLOB:
+                lua_pushliteral(L, "glob");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_REGEXP:
+                lua_pushliteral(L, "regexp");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_NE:
+                lua_pushliteral(L, "<>");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_ISNOT:
+                lua_pushliteral(L, "is not");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_ISNOTNULL:
+                lua_pushliteral(L, "is not null");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_ISNULL:
+                lua_pushliteral(L, "is null");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_IS:
+                lua_pushliteral(L, "is");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_LIMIT:
+                lua_pushliteral(L, "limit");
+                break;
+            case SQLITE_INDEX_CONSTRAINT_OFFSET:
+                lua_pushliteral(L, "offset");
+                break;
+            default:
+                // XXX SQLITE_INDEX_CONSTRAINT_FUNCTION or higher
+                lua_pushinteger(L, info->aConstraint[i].op);
+                break;
+        }
         lua_setfield(L, -2, "op");
 
         lua_pushboolean(L, info->aConstraint[i].usable);
