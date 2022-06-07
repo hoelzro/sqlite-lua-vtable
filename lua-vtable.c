@@ -553,7 +553,11 @@ pop_sqlite_value(lua_State *L, struct script_module_data *data, void *aux)
             break;
         }
         case LUA_TNUMBER:
-            sqlite3_result_double(ctx, lua_tonumber(L, -1));
+            if(lua_isinteger(L, -1)) {
+                sqlite3_result_int64(ctx, lua_tointeger(L, -1));
+            } else {
+                sqlite3_result_double(ctx, lua_tonumber(L, -1));
+            }
             break;
         case LUA_TBOOLEAN:
             sqlite3_result_int(ctx, lua_toboolean(L, -1));
