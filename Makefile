@@ -1,6 +1,6 @@
 .PHONY: default test
 
-CFLAGS+=-fPIC
+CFLAGS+=-fPIC -Wunused -Werror
 LIBS+=-llua -lsqlite3
 
 default: lua-vtable.so
