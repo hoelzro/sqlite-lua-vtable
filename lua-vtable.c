@@ -404,6 +404,7 @@ lua_vtable_best_index(sqlite3_vtab *vtab, sqlite3_index_info *info)
 static void
 pop_nothing(lua_State *L, struct script_module_data *data, void *aux)
 {
+    lua_pop(L, 1);
 }
 
 static int
