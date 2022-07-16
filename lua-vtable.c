@@ -7,6 +7,21 @@
 #include <stdio.h>
 #include <string.h>
 
+#define START_STACK_CHECK\
+    int __top_start = lua_gettop(L)
+
+#define FINISH_STACK_CHECK\
+    if(__top_start != lua_gettop(L)) {\
+        fprintf(stderr, "%s:%d Stack check failed in function %s (initial: %d, current: %d)\n", __FILE__, __LINE__, __FUNCTION__, __top_start, lua_gettop(L));\
+        luaL_error(L, "stack check failed");\
+    }
+
+#define FINISH_STACK_CHECK_METHOD\
+    if(__top_start != lua_gettop(L)) {\
+        fprintf(stderr, "%s:%d Stack check failed calling method %s (initial: %d, current: %d)\n", __FILE__, __LINE__, method_name, __top_start, lua_gettop(L));\
+        luaL_error(L, "stack check failed");\
+    }
+
 SQLITE_EXTENSION_INIT1;
 
 static void *
@@ -98,6 +113,8 @@ lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, s
 {
     struct script_module_data *aux = (struct script_module_data *) _aux;
     lua_State *L = aux->L;
+    START_STACK_CHECK;
+
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, aux->create_ref);
@@ -110,10 +127,12 @@ lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, s
             // XXX what if no values are returned?
             *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
+            FINISH_STACK_CHECK;
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             *vtab_out = pop_vtab(L, aux);
+            FINISH_STACK_CHECK;
             return SQLITE_OK;
         }
     }
@@ -121,6 +140,7 @@ lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, s
     *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
+    FINISH_STACK_CHECK;
     return SQLITE_ERROR;
 }
 
@@ -129,6 +149,8 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
 {
     struct script_module_data *aux = (struct script_module_data *) _aux;
     lua_State *L = aux->L;
+    START_STACK_CHECK;
+
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, aux->connect_ref);
@@ -141,10 +163,12 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
             // XXX what if no values are returned?
             *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
+            FINISH_STACK_CHECK;
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             *vtab_out = pop_vtab(L, aux);
+            FINISH_STACK_CHECK;
             return SQLITE_OK;
         }
     }
@@ -152,6 +176,7 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, 
     *err_out = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
+    FINISH_STACK_CHECK;
     return SQLITE_ERROR;
 }
 
@@ -323,13 +348,15 @@ pop_index_info(lua_State *L, struct script_module_data *data, void *aux)
     ((struct script_module_vtab *) vtab)->aux->L
 
 #define CALL_METHOD_VTAB(vtab, method_name, nargs, popper, popper_aux)\
-    call_method_vtab((struct script_module_vtab *) vtab, ((struct script_module_vtab *) vtab)->aux->method_name##_ref, nargs, popper, popper_aux)
+    call_method_vtab((struct script_module_vtab *) vtab, ((struct script_module_vtab *) vtab)->aux->method_name##_ref, nargs, popper, popper_aux, #method_name)
 
 static int
-call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
+call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux, const char *method_name)
 {
     struct script_module_data *aux = vtab->aux;
     lua_State *L = aux->L;
+    START_STACK_CHECK;
+    __top_start -= nargs; // adjust stack check to compensate for arguments the caller left on the stack
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
@@ -345,10 +372,12 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, voi
             // XXX what if the value at the top of the stack isn't a string?
             vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
+            FINISH_STACK_CHECK_METHOD;
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             popper(L, aux, popper_aux);
+            FINISH_STACK_CHECK_METHOD;
             return SQLITE_OK;
         }
     }
@@ -360,6 +389,7 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, voi
     vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
+    FINISH_STACK_CHECK_METHOD;
     return SQLITE_ERROR;
 }
 
@@ -380,8 +410,11 @@ static int
 lua_vtable_disconnect(sqlite3_vtab *vtab)
 {
     lua_State *L = VTAB_STATE(vtab);
+    START_STACK_CHECK;
+
     int status = CALL_METHOD_VTAB(vtab, disconnect, 0, pop_nothing, NULL);
     luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_vtab *) vtab)->vtab_ref);
+    FINISH_STACK_CHECK;
     return status;
 }
 
@@ -389,8 +422,11 @@ static int
 lua_vtable_destroy(sqlite3_vtab *vtab)
 {
     lua_State *L = VTAB_STATE(vtab);
+    START_STACK_CHECK;
+
     int status = CALL_METHOD_VTAB(vtab, destroy, 0, pop_nothing, NULL);
     luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_vtab *) vtab)->vtab_ref);
+    FINISH_STACK_CHECK;
     return status;
 }
 
@@ -452,10 +488,12 @@ push_arg_values(lua_State *L, int argc, sqlite3_value **argv)
 }
 
 static int
-call_method_cursor(struct script_module_cursor *cursor, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux)
+call_method_cursor(struct script_module_cursor *cursor, int method_ref, int nargs, void (*popper)(lua_State *, struct script_module_data *, void *), void *popper_aux, const char *method_name)
 {
     struct script_module_data *aux = cursor->aux;
     lua_State *L = aux->L;
+    START_STACK_CHECK;
+    __top_start -= nargs; // adjust stack check to compensate for arguments the caller left on the stack
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
@@ -471,10 +509,12 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
             // XXX what if the value at the top of the stack isn't a string?
             cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
+            FINISH_STACK_CHECK_METHOD;
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             popper(L, aux, popper_aux);
+            FINISH_STACK_CHECK_METHOD;
             return SQLITE_OK;
         }
     }
@@ -486,6 +526,7 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
     cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
+    FINISH_STACK_CHECK_METHOD;
     return SQLITE_ERROR;
 }
 
@@ -493,14 +534,17 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
     ((struct script_module_cursor *) cursor)->aux->L
 
 #define CALL_METHOD_CURSOR(cursor, method_name, nargs, popper, popper_aux)\
-    call_method_cursor((struct script_module_cursor *) cursor, ((struct script_module_cursor *)cursor)->aux->method_name##_ref, nargs, popper, popper_aux)
+    call_method_cursor((struct script_module_cursor *) cursor, ((struct script_module_cursor *)cursor)->aux->method_name##_ref, nargs, popper, popper_aux, #method_name)
 
 static int
 lua_vtable_close(sqlite3_vtab_cursor *cursor)
 {
     lua_State *L = CURSOR_STATE(cursor);
+    START_STACK_CHECK;
+
     int status = CALL_METHOD_CURSOR(cursor, close, 0, pop_nothing, NULL);
     luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_cursor *)cursor)->cursor_ref);
+    FINISH_STACK_CHECK;
     return status;
 }
 
@@ -660,11 +704,14 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
 {
     struct caller_args *args = sqlite3_user_data(ctx);
     lua_State *L = args->L;
+    START_STACK_CHECK;
+
     int i;
     int status;
 
     if(!lua_checkstack(L, argc + 1)) {
         sqlite3_result_error_nomem(ctx);
+        FINISH_STACK_CHECK;
         return;
     }
 
@@ -698,6 +745,7 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
     if(status != LUA_OK) {
         sqlite3_result_error(ctx, lua_tostring(L, -1), -1);
         lua_pop(L, 1);
+        FINISH_STACK_CHECK;
         return;
     }
 
@@ -735,12 +783,15 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         }
     }
     lua_pop(L, 1);
+    FINISH_STACK_CHECK;
 }
 
 static int
 lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (**func_out)(sqlite3_context*,int,sqlite3_value**), void **arg_out)
 {
     lua_State *L = VTAB_STATE(vtab);
+    START_STACK_CHECK;
+
     int function_ref;
 
     lua_pushinteger(L, argc);
@@ -749,10 +800,12 @@ lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (*
 
     if(status != SQLITE_OK) {
         // XXX we have no way to signal an error, do we?
+        FINISH_STACK_CHECK;
         return 0;
     }
 
     if(function_ref == LUA_REFNIL) {
+        FINISH_STACK_CHECK;
         return 0;
     }
 
@@ -762,6 +815,8 @@ lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (*
 
     *func_out = lua_function_caller;
     *arg_out = args;
+    FINISH_STACK_CHECK;
+    return 1;
 }
 
 static int
