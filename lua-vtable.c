@@ -911,20 +911,24 @@ set_up_metatables(lua_State *L)
 }
 
 static void
-create_module_from_script(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+create_module(sqlite3_context *ctx, const char *source, int is_source_file)
 {
     lua_State *L;
     int status;
 
     sqlite3 *db = sqlite3_context_db_handle(ctx);
-    const char *filename = sqlite3_value_text(argv[0]);
 
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
 
     set_up_metatables(L);
 
-    status = luaL_dofile(L, filename);
+    if(is_source_file) {
+        status = luaL_dofile(L, source);
+    } else {
+        status = luaL_dostring(L, source);
+    }
+
     if(status) {
         sqlite3_result_error(ctx, lua_tostring(L, -1), -1);
         lua_close(L);
@@ -1025,6 +1029,13 @@ create_module_from_script(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         sqlite3_free(script_module_aux);
         lua_close(L);
     }
+}
+
+static void
+create_module_from_script(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+{
+    const char *filename = sqlite3_value_text(argv[0]);
+    create_module(ctx, filename, 1);
 }
 
 int
