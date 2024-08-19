@@ -1032,10 +1032,17 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
 }
 
 static void
-create_module_from_script(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+create_module_from_file(sqlite3_context *ctx, int argc, sqlite3_value **argv)
 {
     const char *filename = sqlite3_value_text(argv[0]);
     create_module(ctx, filename, 1);
+}
+
+static void
+create_module_from_source(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+{
+    const char *source = sqlite3_value_text(argv[0]);
+    create_module(ctx, source, 0);
 }
 
 int
@@ -1045,7 +1052,10 @@ sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *ap
     sqlite3_initialize();
 
     sqlite3_create_function(db, "lua_create_module_from_file", 1, SQLITE_UTF8,
-        NULL, create_module_from_script, NULL, NULL);
+        NULL, create_module_from_file, NULL, NULL);
+
+    sqlite3_create_function(db, "lua_create_module_from_source", 1, SQLITE_UTF8,
+        NULL, create_module_from_source, NULL, NULL);
 
     return SQLITE_OK;
 }
