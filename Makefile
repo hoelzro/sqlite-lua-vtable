@@ -6,7 +6,7 @@ LIBS+=-llua -lsqlite3
 default: lua-vtable.so
 
 %.so: %.o
-	$(CC) $(CFLAGS) -shared -o $@ $^ $(LIBS)
+	$(CC) $(CFLAGS) -shared -o $@ $^ $(LDFLAGS) $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^
