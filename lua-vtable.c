@@ -690,9 +690,9 @@ pop_function(lua_State *L, struct script_module_data *data, void *aux)
     *ref = LUA_REFNIL;
     if(lua_isfunction(L, -1)) {
         *ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    } else {
+        lua_pop(L, 1);
     }
-
-    lua_pop(L, 1);
 }
 
 struct caller_args {
