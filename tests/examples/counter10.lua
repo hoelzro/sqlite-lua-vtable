@@ -50,4 +50,12 @@ function vtable.rowid(cursor)
   return cursor.n
 end
 
+function vtable.find_function(vtab, nargs, name)
+  if name == 'match' and nargs == 2 then
+    return function(a, b)
+      return b % a == 0
+    end
+  end
+end
+
 return vtable
