@@ -10,11 +10,10 @@ local vtable = {
 function vtable.connect(db, args)
   local target_table = args[4]
 
-  local realdb = sqlite.open_ptr(db:get_ptr())
   db:declare_vtab 'CREATE TABLE _ (value INTEGER NOT NULL)'
 
   return {
-    db = realdb, -- XXX clean up on disconnect?
+    db = db,
     target = target_table,
   }
 end
