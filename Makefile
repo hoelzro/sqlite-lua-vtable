@@ -12,10 +12,7 @@ default: lua-vtable.so
 	$(CC) $(CFLAGS) -c $^
 
 test:
-	for sql in tests/*.sql; do                                                        \
-		sqlite3 :memory: ".read $$sql" || exit 1                                ; \
-		diff -q testcase-out.txt tests/$$(basename $$sql .sql).output || exit 1 ; \
-	done
+	./run-tests.sh
 
 format:
 	clang-format -i lua-vtable.c
