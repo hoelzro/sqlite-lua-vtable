@@ -737,7 +737,6 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
                 length = sqlite3_value_bytes(argv[i]);
                 lua_pushlstring(L, (const char *) sqlite3_value_text(argv[i]), length);
                 break;
-            default:
             }
         }
     }
