@@ -17,5 +17,8 @@ test:
 		diff -q testcase-out.txt tests/$$(basename $$sql .sql).output || exit 1 ; \
 	done
 
+format:
+	clang-format -i lua-vtable.c
+
 clean:
 	rm -f *.o *.so
