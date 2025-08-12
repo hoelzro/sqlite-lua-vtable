@@ -1,8 +1,16 @@
 #!/bin/bash
 
-set -e
+set -e -u
+
+got_output_file=$(mktemp)
+
+cleanup() {
+    rm -f "$got_output_file"
+}
+
+trap cleanup EXIT
 
 for sql in tests/*.sql; do
-    sqlite3 :memory: ".read $sql" > testcase-out.txt
-    diff --brief testcase-out.txt tests/$(basename "$sql" .sql).output
+    sqlite3 :memory: ".read $sql" > "$got_output_file"
+    diff --brief "$got_output_file" tests/$(basename "$sql" .sql).output
 done
