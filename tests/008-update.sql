@@ -1,5 +1,4 @@
 .load ./lua-vtable
-.testcase tests/008-update
 
 select lua_create_module_from_file('tests/examples/update.lua');
 CREATE VIRTUAL TABLE t USING updater;

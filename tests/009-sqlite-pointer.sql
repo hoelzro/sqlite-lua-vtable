@@ -1,5 +1,4 @@
 .load ./lua-vtable
-.testcase tests/009-sqlite-pointer
 
 CREATE TABLE example (
     value INTEGER NOT NULL
