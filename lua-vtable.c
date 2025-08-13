@@ -58,6 +58,8 @@ struct script_module_data {
     int rollback_ref;
     int rename_ref;
     int find_function_ref;
+
+    int subtype_registry_ref;
 };
 
 struct script_module_vtab {
@@ -459,8 +461,8 @@ push_cursor(lua_State *L, struct script_module_cursor *cursor)
     lua_rawgeti(L, LUA_REGISTRYINDEX, cursor->cursor_ref);
 }
 
-static void
-push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value)
+static int
+push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value, struct script_module_data *aux, char **error_msg)
 {
     START_STACK_CHECK;
 
@@ -484,19 +486,67 @@ push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value)
         }
     }
 
+    int subtype = sqlite3_value_subtype(value);
+    if(subtype > 0) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, aux->subtype_registry_ref);
+        lua_rawgeti(L, -1, subtype);
+        if(!lua_isnil(L, -1)) {
+            lua_getfield(L, -1, "__fromsqlite");
+            if(lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -4); // push the converted lua value
+                int status = lua_pcall(L, 1, 1, 0);
+                if(status != LUA_OK) {
+                    const char *lua_err = lua_tostring(L, -1);
+                    *error_msg = sqlite3_mprintf("__fromsqlite error: %s", lua_err ? lua_err : "unknown error");
+                    lua_pop(L, 4);
+                    FINISH_STACK_CHECK;
+                    return SQLITE_ERROR;
+                }
+
+                int result_type = lua_type(L, -1);
+                if(result_type == LUA_TTABLE || result_type == LUA_TUSERDATA) {
+                    lua_pushvalue(L, -2);
+                    lua_setmetatable(L, -2);
+
+                    lua_replace(L, -4);
+                    lua_pop(L, 2);
+                    FINISH_STACK_CHECK_WITH_CHANGE(1);
+                    return SQLITE_OK;
+                } else {
+                    *error_msg = sqlite3_mprintf("__fromsqlite must return a table or userdata, got %s", lua_typename(L, result_type));
+                    lua_pop(L, 4);
+                    FINISH_STACK_CHECK;
+                    return SQLITE_ERROR;
+                }
+            } else {
+                *error_msg = sqlite3_mprintf("__fromsqlite must be a function, got %s", lua_typename(L, lua_type(L, -1)));
+                lua_pop(L, 4);
+                FINISH_STACK_CHECK;
+                return SQLITE_ERROR;
+            }
+        }
+        lua_pop(L, 2);
+    }
+
     FINISH_STACK_CHECK_WITH_CHANGE(1);
+    return SQLITE_OK;
 }
 
-static void
-push_arg_values(lua_State *L, int argc, sqlite3_value **argv)
+static int
+push_arg_values(lua_State *L, int argc, sqlite3_value **argv, struct script_module_data *aux, char **error_msg)
 {
     int i;
 
     lua_createtable(L, argc, 0);
     for(i = 0; i < argc; i++) {
-        push_sqlite_value_to_lua(L, argv[i]);
+        int status = push_sqlite_value_to_lua(L, argv[i], aux, error_msg);
+        if(status != SQLITE_OK) {
+            lua_pop(L, 1);
+            return status;
+        }
         lua_rawseti(L, -2, i + 1);
     }
+    return SQLITE_OK;
 }
 
 static int
@@ -563,10 +613,19 @@ static int
 lua_vtable_filter(sqlite3_vtab_cursor *cursor, int idx_num, const char *idx_str, int argc, sqlite3_value **argv)
 {
     lua_State *L = CURSOR_STATE(cursor);
+    char *error_msg = NULL;
 
     lua_pushinteger(L, idx_num);
     lua_pushstring(L, idx_str);
-    push_arg_values(L, argc, argv);
+    int status = push_arg_values(L, argc, argv, ((struct script_module_cursor *) cursor)->aux, &error_msg);
+    if(status != SQLITE_OK) {
+        if(((struct script_module_cursor *) cursor)->cursor.pVtab->zErrMsg) {
+            sqlite3_free(((struct script_module_cursor *) cursor)->cursor.pVtab->zErrMsg);
+        }
+        ((struct script_module_cursor *) cursor)->cursor.pVtab->zErrMsg = error_msg;
+        lua_pop(L, 2);
+        return status;
+    }
 
     return CALL_METHOD_CURSOR(cursor, filter, 3, pop_nothing, NULL);
 }
@@ -594,20 +653,89 @@ lua_vtable_eof(sqlite3_vtab_cursor *cursor)
 }
 
 static void
-push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx)
+push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx, struct script_module_data *aux)
 {
     START_STACK_CHECK;
 
-    switch(lua_type(L, -1)) {
-        case LUA_TSTRING: {
-            size_t length;
-            const char *value;
+    int lua_value_type = lua_type(L, -1);
+    int subtype = 0;
 
-            value = lua_tolstring(L, -1, &length);
+    if(lua_value_type == LUA_TFUNCTION || lua_value_type == LUA_TTHREAD) {
+        char *error = sqlite3_mprintf("Invalid return type from lua(): %s", lua_typename(L, lua_value_type));
+        sqlite3_result_error(ctx, error, -1);
+        sqlite3_free(error);
+        FINISH_STACK_CHECK;
+        return;
+    }
 
-            sqlite3_result_text(ctx, value, length, SQLITE_TRANSIENT);
-            break;
+    if(lua_value_type == LUA_TTABLE || lua_value_type == LUA_TUSERDATA) {
+        if(!lua_getmetatable(L, -1)) {
+            char *error = sqlite3_mprintf("Table/userdata without metatable cannot be converted to SQLite");
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+            FINISH_STACK_CHECK;
+            return;
         }
+
+        lua_rawgeti(L, LUA_REGISTRYINDEX, aux->subtype_registry_ref);
+
+        lua_pushvalue(L, -2);
+        lua_rawget(L, -2);
+        if(lua_isnil(L, -1)) {
+            lua_pop(L, 3);
+            char *error = sqlite3_mprintf("Metatable not registered with a subtype mapping");
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+            FINISH_STACK_CHECK;
+            return;
+        }
+
+        subtype = lua_tointeger(L, -1);
+        lua_pop(L, 2);
+
+        lua_getfield(L, -1, "__tosqlite");
+
+        if(!lua_isfunction(L, -1)) {
+            int type = lua_type(L, -1);
+            lua_pop(L, 2);
+            char *error = sqlite3_mprintf("__tosqlite must be a function, got %s", lua_typename(L, type));
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+            FINISH_STACK_CHECK;
+            return;
+        }
+
+        lua_pushvalue(L, -3);
+        int status = lua_pcall(L, 1, 1, 0);
+        if(status != LUA_OK) {
+            char *error = sqlite3_mprintf("Error in __tosqlite: %s", lua_tostring(L, -1));
+            lua_pop(L, 2);
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+            FINISH_STACK_CHECK;
+            return;
+        }
+
+        lua_replace(L, -3);
+        lua_pop(L, 1);
+
+        lua_value_type = lua_type(L, -1);
+        if(lua_value_type != LUA_TNIL && lua_value_type != LUA_TBOOLEAN && lua_value_type != LUA_TNUMBER && lua_value_type != LUA_TSTRING) {
+            char *error = sqlite3_mprintf("__tosqlite must return nil, boolean, number, or string, got %s", lua_typename(L, lua_value_type));
+            sqlite3_result_error(ctx, error, -1);
+            sqlite3_free(error);
+            FINISH_STACK_CHECK;
+            return;
+        }
+    }
+
+    switch(lua_value_type) {
+        case LUA_TNIL:
+            sqlite3_result_null(ctx);
+            break;
+        case LUA_TBOOLEAN:
+            sqlite3_result_int(ctx, lua_toboolean(L, -1));
+            break;
         case LUA_TNUMBER:
             if(lua_isinteger(L, -1)) {
                 sqlite3_result_int64(ctx, lua_tointeger(L, -1));
@@ -615,24 +743,16 @@ push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx)
                 sqlite3_result_double(ctx, lua_tonumber(L, -1));
             }
             break;
-        case LUA_TBOOLEAN:
-            sqlite3_result_int(ctx, lua_toboolean(L, -1));
+        case LUA_TSTRING: {
+            size_t length;
+            const char *value = lua_tolstring(L, -1, &length);
+            sqlite3_result_text(ctx, value, length, SQLITE_TRANSIENT);
             break;
-        case LUA_TNIL:
-            sqlite3_result_null(ctx);
-            break;
-
-        case LUA_TTABLE:
-        case LUA_TFUNCTION:
-        case LUA_TTHREAD:
-        case LUA_TUSERDATA: {
-            char *error = NULL;
-
-            error = sqlite3_mprintf("Invalid return type from lua(): %s", lua_typename(L, lua_type(L, -1)));
-
-            sqlite3_result_error(ctx, error, -1);
-            sqlite3_free(error);
         }
+    }
+
+    if(subtype > 0) {
+        sqlite3_result_subtype(ctx, subtype);
     }
 
     FINISH_STACK_CHECK;
@@ -642,7 +762,7 @@ static void
 pop_sqlite_value(lua_State *L, struct script_module_data *data, void *aux)
 {
     sqlite3_context *ctx = (sqlite3_context *) aux;
-    push_lua_value_to_sqlite(L, ctx);
+    push_lua_value_to_sqlite(L, ctx, data);
     lua_pop(L, 1);
 }
 
@@ -674,7 +794,17 @@ static int
 lua_vtable_update(sqlite3_vtab *vtab, int argc, sqlite3_value **argv, sqlite_int64 *rowid_out)
 {
     lua_State *L = VTAB_STATE(vtab);
-    push_arg_values(L, argc, argv);
+    char *error_msg = NULL;
+
+    int status = push_arg_values(L, argc, argv, ((struct script_module_vtab *) vtab)->aux, &error_msg);
+    if(status != SQLITE_OK) {
+        if(vtab->zErrMsg) {
+            sqlite3_free(vtab->zErrMsg);
+        }
+        vtab->zErrMsg = error_msg;
+        return status;
+    }
+
     return CALL_METHOD_VTAB(vtab, update, 1, pop_int64, rowid_out);
 }
 
@@ -718,6 +848,7 @@ pop_function(lua_State *L, struct script_module_data *data, void *aux)
 struct caller_args {
     lua_State *L;
     int function_ref;
+    struct script_module_data *aux;
 };
 
 static void
@@ -739,7 +870,15 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
     lua_rawgeti(L, LUA_REGISTRYINDEX, args->function_ref);
 
     for(i = 0; i < argc; i++) {
-        push_sqlite_value_to_lua(L, argv[i]);
+        char *error_msg = NULL;
+        int push_status = push_sqlite_value_to_lua(L, argv[i], args->aux, &error_msg);
+        if(push_status != SQLITE_OK) {
+            sqlite3_result_error(ctx, error_msg ? error_msg : "Error converting argument", -1);
+            sqlite3_free(error_msg);
+            lua_pop(L, i + 1);
+            FINISH_STACK_CHECK;
+            return;
+        }
     }
 
     status = lua_pcall(L, argc, 1, 0);
@@ -750,7 +889,7 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         return;
     }
 
-    push_lua_value_to_sqlite(L, ctx);
+    push_lua_value_to_sqlite(L, ctx, args->aux);
     lua_pop(L, 1);
     FINISH_STACK_CHECK;
 }
@@ -781,6 +920,7 @@ lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (*
     struct caller_args *args = sqlite3_malloc(sizeof(struct caller_args));
     args->L = L;
     args->function_ref = function_ref;
+    args->aux = ((struct script_module_vtab *) vtab)->aux;
 
     *func_out = lua_function_caller;
     *arg_out = args;
@@ -863,19 +1003,51 @@ lua_sqlite3_get_ptr(lua_State *L)
     return 1;
 }
 
+static int
+lua_register_metatable_subtype_mapping(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+    int subtype = luaL_checkinteger(L, 2);
+
+    if(subtype <= 0) {
+        return luaL_error(L, "subtype must be a positive integer");
+    }
+
+    int registry_ref = lua_tointeger(L, lua_upvalueindex(1));
+    lua_rawgeti(L, LUA_REGISTRYINDEX, registry_ref);
+
+    lua_pushvalue(L, 1);
+    lua_rawseti(L, -2, subtype);
+
+    lua_pushvalue(L, 1);
+    lua_pushinteger(L, subtype);
+    lua_rawset(L, -3);
+
+    return 0;
+}
+
 static luaL_Reg lua_sqlite3_methods[] = {
     {"declare_vtab", lua_sqlite3_declare_vtab},
     {"get_ptr", lua_sqlite3_get_ptr},
     {NULL, NULL},
 };
 
-static void
+static int
 set_up_metatables(lua_State *L)
 {
     luaL_newmetatable(L, "sqlite3*");
     luaL_newlib(L, lua_sqlite3_methods);
     lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
+
+    lua_createtable(L, 0, 0);
+    int registry_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    lua_pushinteger(L, registry_ref);
+    lua_pushcclosure(L, lua_register_metatable_subtype_mapping, 1);
+    lua_setglobal(L, "register_metatable_subtype_mapping");
+
+    return registry_ref;
 }
 
 static void
@@ -889,7 +1061,7 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
 
-    set_up_metatables(L);
+    int registry_ref = set_up_metatables(L);
 
     if(is_source_file) {
         status = luaL_dofile(L, source);
@@ -950,6 +1122,8 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
     METHOD_REF(find_function);
 
 #undef METHOD_REF
+
+    script_module_aux->subtype_registry_ref = registry_ref;
 
     if(script_module_aux->update_ref == LUA_REFNIL) {
         script_module->xUpdate = NULL;
