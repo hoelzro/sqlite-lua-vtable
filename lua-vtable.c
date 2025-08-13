@@ -590,9 +590,8 @@ lua_vtable_eof(sqlite3_vtab_cursor *cursor)
 }
 
 static void
-pop_sqlite_value(lua_State *L, struct script_module_data *data, void *aux)
+push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx)
 {
-    sqlite3_context *ctx = (sqlite3_context *) aux;
     switch(lua_type(L, -1)) {
         case LUA_TSTRING: {
             size_t length;
@@ -629,6 +628,13 @@ pop_sqlite_value(lua_State *L, struct script_module_data *data, void *aux)
             sqlite3_free(error);
         }
     }
+}
+
+static void
+pop_sqlite_value(lua_State *L, struct script_module_data *data, void *aux)
+{
+    sqlite3_context *ctx = (sqlite3_context *) aux;
+    push_lua_value_to_sqlite(L, ctx);
     lua_pop(L, 1);
 }
 
@@ -736,39 +742,7 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
         return;
     }
 
-    // XXX duplication with pop_sqlite_value
-    switch(lua_type(L, -1)) {
-        case LUA_TSTRING: {
-            size_t length;
-            const char *value;
-
-            value = lua_tolstring(L, -1, &length);
-
-            sqlite3_result_text(ctx, value, length, SQLITE_TRANSIENT);
-            break;
-        }
-        case LUA_TNUMBER:
-            sqlite3_result_double(ctx, lua_tonumber(L, -1));
-            break;
-        case LUA_TBOOLEAN:
-            sqlite3_result_int(ctx, lua_toboolean(L, -1));
-            break;
-        case LUA_TNIL:
-            sqlite3_result_null(ctx);
-            break;
-
-        case LUA_TTABLE:
-        case LUA_TFUNCTION:
-        case LUA_TTHREAD:
-        case LUA_TUSERDATA: {
-            char *error = NULL;
-
-            error = sqlite3_mprintf("Invalid return type from lua(): %s", lua_typename(L, lua_type(L, -1)));
-
-            sqlite3_result_error(ctx, error, -1);
-            sqlite3_free(error);
-        }
-    }
+    push_lua_value_to_sqlite(L, ctx);
     lua_pop(L, 1);
     FINISH_STACK_CHECK;
 }
