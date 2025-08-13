@@ -19,6 +19,7 @@ test:
 
 format:
 	clang-format -i lua-vtable.c
+	stylua counter.lua tests/examples/*.lua
 
 clean:
 	rm -f *.o *.so
