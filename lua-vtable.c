@@ -459,31 +459,37 @@ push_cursor(lua_State *L, struct script_module_cursor *cursor)
 }
 
 static void
+push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value)
+{
+    switch(sqlite3_value_type(value)) {
+        case SQLITE_INTEGER:
+            lua_pushinteger(L, sqlite3_value_int(value));
+            break;
+        case SQLITE_FLOAT:
+            lua_pushnumber(L, sqlite3_value_double(value));
+            break;
+        case SQLITE_NULL:
+            lua_pushnil(L);
+            break;
+        case SQLITE_BLOB:
+        case SQLITE_TEXT: {
+            size_t length;
+
+            length = sqlite3_value_bytes(value);
+            lua_pushlstring(L, (const char *) sqlite3_value_text(value), length);
+            break;
+        }
+    }
+}
+
+static void
 push_arg_values(lua_State *L, int argc, sqlite3_value **argv)
 {
     int i;
 
     lua_createtable(L, argc, 0);
     for(i = 0; i < argc; i++) {
-        switch(sqlite3_value_type(argv[i])) {
-            case SQLITE_INTEGER:
-                lua_pushinteger(L, sqlite3_value_int(argv[i]));
-                break;
-            case SQLITE_FLOAT:
-                lua_pushnumber(L, sqlite3_value_double(argv[i]));
-                break;
-            case SQLITE_NULL:
-                lua_pushnil(L);
-                break;
-            case SQLITE_BLOB:
-            case SQLITE_TEXT: {
-                size_t length;
-
-                length = sqlite3_value_bytes(argv[i]);
-                lua_pushlstring(L, (const char *) sqlite3_value_text(argv[i]), length);
-                break;
-            }
-        }
+        push_sqlite_value_to_lua(L, argv[i]);
         lua_rawseti(L, -2, i + 1);
     }
 }
@@ -718,27 +724,8 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, args->function_ref);
 
-    // XXX duplication with push_arg_values
     for(i = 0; i < argc; i++) {
-        switch(sqlite3_value_type(argv[i])) {
-            case SQLITE_INTEGER:
-                lua_pushinteger(L, sqlite3_value_int(argv[i]));
-                break;
-            case SQLITE_FLOAT:
-                lua_pushnumber(L, sqlite3_value_double(argv[i]));
-                break;
-            case SQLITE_NULL:
-                lua_pushnil(L);
-                break;
-            case SQLITE_BLOB:
-            case SQLITE_TEXT: {
-                size_t length;
-
-                length = sqlite3_value_bytes(argv[i]);
-                lua_pushlstring(L, (const char *) sqlite3_value_text(argv[i]), length);
-                break;
-            }
-        }
+        push_sqlite_value_to_lua(L, argv[i]);
     }
 
     status = lua_pcall(L, argc, 1, 0);
