@@ -10,15 +10,17 @@
 #define START_STACK_CHECK\
     int __top_start = lua_gettop(L)
 
-#define FINISH_STACK_CHECK\
-    if(__top_start != lua_gettop(L)) {\
-        fprintf(stderr, "%s:%d Stack check failed in function %s (initial: %d, current: %d)\n", __FILE__, __LINE__, __FUNCTION__, __top_start, lua_gettop(L));\
+#define FINISH_STACK_CHECK_WITH_CHANGE(expected_change)\
+    if(__top_start + (expected_change) != lua_gettop(L)) {\
+        fprintf(stderr, "%s:%d Stack check failed in function %s (initial: %d, current: %d, expected change: %d)\n", __FILE__, __LINE__, __FUNCTION__, __top_start, lua_gettop(L), (expected_change));\
         luaL_error(L, "stack check failed");\
     }
 
-#define FINISH_STACK_CHECK_METHOD\
-    if(__top_start != lua_gettop(L)) {\
-        fprintf(stderr, "%s:%d Stack check failed calling method %s (initial: %d, current: %d)\n", __FILE__, __LINE__, method_name, __top_start, lua_gettop(L));\
+#define FINISH_STACK_CHECK FINISH_STACK_CHECK_WITH_CHANGE(0)
+
+#define FINISH_STACK_CHECK_METHOD(expected_change)\
+    if(__top_start + (expected_change) != lua_gettop(L)) {\
+        fprintf(stderr, "%s:%d Stack check failed calling method %s (initial: %d, current: %d, expected change: %d)\n", __FILE__, __LINE__, method_name, __top_start, lua_gettop(L), (expected_change));\
         luaL_error(L, "stack check failed");\
     }
 
@@ -356,7 +358,6 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, voi
     struct script_module_data *aux = vtab->aux;
     lua_State *L = aux->L;
     START_STACK_CHECK;
-    __top_start -= nargs; // adjust stack check to compensate for arguments the caller left on the stack
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
@@ -372,12 +373,12 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, voi
             // XXX what if the value at the top of the stack isn't a string?
             vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
-            FINISH_STACK_CHECK_METHOD;
+            FINISH_STACK_CHECK_METHOD(-nargs);
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             popper(L, aux, popper_aux);
-            FINISH_STACK_CHECK_METHOD;
+            FINISH_STACK_CHECK_METHOD(-nargs);
             return SQLITE_OK;
         }
     }
@@ -389,7 +390,7 @@ call_method_vtab(struct script_module_vtab *vtab, int method_ref, int nargs, voi
     vtab->vtab.zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
-    FINISH_STACK_CHECK_METHOD;
+    FINISH_STACK_CHECK_METHOD(-nargs);
     return SQLITE_ERROR;
 }
 
@@ -500,7 +501,6 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
     struct script_module_data *aux = cursor->aux;
     lua_State *L = aux->L;
     START_STACK_CHECK;
-    __top_start -= nargs; // adjust stack check to compensate for arguments the caller left on the stack
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, method_ref);
@@ -516,12 +516,12 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
             // XXX what if the value at the top of the stack isn't a string?
             cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
             lua_pop(L, 2);
-            FINISH_STACK_CHECK_METHOD;
+            FINISH_STACK_CHECK_METHOD(-nargs);
             return SQLITE_ERROR;
         } else {
             lua_pop(L, 1);
             popper(L, aux, popper_aux);
-            FINISH_STACK_CHECK_METHOD;
+            FINISH_STACK_CHECK_METHOD(-nargs);
             return SQLITE_OK;
         }
     }
@@ -533,7 +533,7 @@ call_method_cursor(struct script_module_cursor *cursor, int method_ref, int narg
     cursor->cursor.pVtab->zErrMsg = sqlite3_mprintf("%s", lua_tostring(L, -1));
     lua_pop(L, 1);
 
-    FINISH_STACK_CHECK_METHOD;
+    FINISH_STACK_CHECK_METHOD(-nargs);
     return SQLITE_ERROR;
 }
 
