@@ -1,7 +1,7 @@
 #include "sqlite3ext.h"
 
-#include <lua.h>
 #include <lauxlib.h>
+#include <lua.h>
 #include <lualib.h>
 
 #include <stdio.h>
@@ -80,7 +80,7 @@ push_db(lua_State *L, sqlite3 *db)
 }
 
 static void
-push_arg_strings(lua_State *L, int argc, const char * const *argv)
+push_arg_strings(lua_State *L, int argc, const char *const *argv)
 {
     int i;
 
@@ -109,7 +109,7 @@ pop_vtab(lua_State *L, struct script_module_data *aux)
 }
 
 static int
-lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
+lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char *const *argv, sqlite3_vtab **vtab_out, char **err_out)
 {
     struct script_module_data *aux = (struct script_module_data *) _aux;
     lua_State *L = aux->L;
@@ -145,7 +145,7 @@ lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char * const *argv, s
 }
 
 static int
-lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char * const *argv, sqlite3_vtab **vtab_out, char **err_out)
+lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char *const *argv, sqlite3_vtab **vtab_out, char **err_out)
 {
     struct script_module_data *aux = (struct script_module_data *) _aux;
     lua_State *L = aux->L;
@@ -283,7 +283,7 @@ pop_index_info(lua_State *L, struct script_module_data *data, void *aux)
     lua_pop(L, 1);
 
     // XXX test that returning a short table is OK
-    for(i = 0; i < info->nConstraint && (i+1) <= returned_constraint_usage_len; i++) {
+    for(i = 0; i < info->nConstraint && (i + 1) <= returned_constraint_usage_len; i++) {
         lua_rawgeti(L, -1, i + 1);
 
         lua_getfield(L, -1, "argv_index");
@@ -544,7 +544,7 @@ lua_vtable_close(sqlite3_vtab_cursor *cursor)
     START_STACK_CHECK;
 
     int status = CALL_METHOD_CURSOR(cursor, close, 0, pop_nothing, NULL);
-    luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_cursor *)cursor)->cursor_ref);
+    luaL_unref(L, LUA_REGISTRYINDEX, ((struct script_module_cursor *) cursor)->cursor_ref);
     FINISH_STACK_CHECK;
     return status;
 }
@@ -787,7 +787,7 @@ lua_function_caller(sqlite3_context *ctx, int argc, sqlite3_value **argv)
 }
 
 static int
-lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (**func_out)(sqlite3_context*,int,sqlite3_value**), void **arg_out)
+lua_vtable_find_function(sqlite3_vtab *vtab, int argc, const char *name, void (**func_out)(sqlite3_context *, int, sqlite3_value **), void **arg_out)
 {
     lua_State *L = VTAB_STATE(vtab);
     START_STACK_CHECK;
@@ -1013,12 +1013,7 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
     script_module_aux->L = L;
     script_module_aux->mod = script_module;
 
-    status = sqlite3_create_module_v2(
-        db,
-        module_name,
-        script_module,
-        script_module_aux,
-        cleanup_script_module);
+    status = sqlite3_create_module_v2(db, module_name, script_module, script_module_aux, cleanup_script_module);
 
     if(status == SQLITE_OK) {
         lua_settop(L, 0); // clear Lua stack after create_module to make sure module_name is a valid pointer
@@ -1050,11 +1045,9 @@ sqlite3_extension_init(sqlite3 *db, char **error, const sqlite3_api_routines *ap
     SQLITE_EXTENSION_INIT2(api);
     sqlite3_initialize();
 
-    sqlite3_create_function(db, "lua_create_module_from_file", 1, SQLITE_UTF8,
-        NULL, create_module_from_file, NULL, NULL);
+    sqlite3_create_function(db, "lua_create_module_from_file", 1, SQLITE_UTF8, NULL, create_module_from_file, NULL, NULL);
 
-    sqlite3_create_function(db, "lua_create_module_from_source", 1, SQLITE_UTF8,
-        NULL, create_module_from_source, NULL, NULL);
+    sqlite3_create_function(db, "lua_create_module_from_source", 1, SQLITE_UTF8, NULL, create_module_from_source, NULL, NULL);
 
     return SQLITE_OK;
 }
