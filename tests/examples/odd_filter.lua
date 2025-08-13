@@ -4,7 +4,7 @@ local vtable = {
   name = 'odd_filter',
 
   disconnect = function() end,
-  destroy    = function() end,
+  destroy = function() end,
 }
 
 function vtable.connect(db, args)

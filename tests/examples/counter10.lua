@@ -4,9 +4,9 @@ local vtable = {
   name = 'counter10',
 
   disconnect = noop,
-  destroy    = noop,
-  filter     = noop,
-  close      = noop,
+  destroy = noop,
+  filter = noop,
+  close = noop,
 }
 
 function vtable.create(db, args)
@@ -29,7 +29,7 @@ end
 
 function vtable.open()
   return {
-    n   = 1,
+    n = 1,
     max = 10,
   }
 end

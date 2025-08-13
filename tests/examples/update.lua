@@ -4,8 +4,8 @@ local vtable = {
   name = 'updater',
 
   disconnect = noop,
-  destroy    = noop,
-  close      = noop,
+  destroy = noop,
+  close = noop,
 }
 
 function vtable.create(db, args)
@@ -58,12 +58,12 @@ end
 function vtable.update(vtab, args)
   if #args == 1 then
     -- DELETE
-    vtab[ args[1] ] = TOMBSTONE
+    vtab[args[1]] = TOMBSTONE
   elseif args[1] ~= nil then
     -- UPDATE
     assert(args[1] == args[2])
 
-    vtab[ args[1] ] = args[3]
+    vtab[args[1]] = args[3]
     return args[1]
   else
     -- INSERT

@@ -6,13 +6,12 @@ local vtable = {
 function vtable.create(db, args)
   db:declare_vtab 'CREATE TABLE _ (value INTEGER NOT NULL)'
 
-  return setmetatable({}, {__index = counter_vtable_methods})
+  return setmetatable({}, { __index = counter_vtable_methods })
 end
 
 vtable.connect = vtable.create
 
-function vtable.disconnect(vtab)
-end
+function vtable.disconnect(vtab) end
 
 function vtable.best_index(vtab, info)
   return {
@@ -55,17 +54,13 @@ function vtable.update(vtab, args)
   return args[2]
 end
 
-function vtable.begin()
-end
+function vtable.begin() end
 
-function vtable.commit()
-end
+function vtable.commit() end
 
-function vtable.rollback()
-end
+function vtable.rollback() end
 
-function vtable.sync()
-end
+function vtable.sync() end
 
 function vtable.find_function(vtab, argc, name)
   print(string.format('in find_function (argc = %d, name = %s)', argc, name))

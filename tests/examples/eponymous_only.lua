@@ -7,7 +7,7 @@ for k, v in pairs(counter10) do
 end
 
 eponymous.connect = eponymous.create
-eponymous.create  = nil
-eponymous.name    = 'counter'
+eponymous.create = nil
+eponymous.name = 'counter'
 
 return eponymous
