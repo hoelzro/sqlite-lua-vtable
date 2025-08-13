@@ -462,6 +462,8 @@ push_cursor(lua_State *L, struct script_module_cursor *cursor)
 static void
 push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value)
 {
+    START_STACK_CHECK;
+
     switch(sqlite3_value_type(value)) {
         case SQLITE_INTEGER:
             lua_pushinteger(L, sqlite3_value_int(value));
@@ -481,6 +483,8 @@ push_sqlite_value_to_lua(lua_State *L, sqlite3_value *value)
             break;
         }
     }
+
+    FINISH_STACK_CHECK_WITH_CHANGE(1);
 }
 
 static void
@@ -592,6 +596,8 @@ lua_vtable_eof(sqlite3_vtab_cursor *cursor)
 static void
 push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx)
 {
+    START_STACK_CHECK;
+
     switch(lua_type(L, -1)) {
         case LUA_TSTRING: {
             size_t length;
@@ -628,6 +634,8 @@ push_lua_value_to_sqlite(lua_State *L, sqlite3_context *ctx)
             sqlite3_free(error);
         }
     }
+
+    FINISH_STACK_CHECK;
 }
 
 static void
