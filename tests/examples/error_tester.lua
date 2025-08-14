@@ -23,8 +23,11 @@ function vtable.create(db, args)
 
   local chunk = assert(load(metatable_code))
   local metatable = assert(chunk())
-  register_metatable_subtype_mapping(metatable, next_subtype_id)
-  next_subtype_id = next_subtype_id + 1
+
+  if metatable.mode ~= 'unmapped' then
+    register_metatable_subtype_mapping(metatable, next_subtype_id)
+    next_subtype_id = next_subtype_id + 1
+  end
 
   return { metatable = metatable }
 end
@@ -49,7 +52,15 @@ function vtable.column(cursor, n)
   if n == 0 then
     return cursor.n
   else
-    return setmetatable({ data = 'test_data_' .. cursor.n }, cursor.metatable)
+    local data = { data = 'test_data_' .. cursor.n }
+
+    if cursor.metatable.mode == 'no_metatable' then
+      return data
+    elseif cursor.metatable.mode == 'unmapped' then
+      return setmetatable(data, cursor.metatable)
+    else
+      return setmetatable(data, cursor.metatable)
+    end
   end
 end
 
