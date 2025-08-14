@@ -35,7 +35,7 @@ end
 local function extract_and_format_lua(sql_content)
   local result = sql_content
 
-  local pattern = "(CREATE VIRTUAL TABLE %w+ USING error_tester%('%s*)(.-)(%s*'%)%;)"
+  local pattern = "(CREATE VIRTUAL TABLE %w+ USING metatable_tester%('%s*)(.-)(%s*'%)%;)"
 
   result = result:gsub(pattern, function(prefix, lua_code, suffix)
     local formatted_lua = run_stylua(lua_code)
