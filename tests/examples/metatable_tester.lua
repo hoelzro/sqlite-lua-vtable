@@ -9,7 +9,7 @@ end
 local next_subtype_id = 1
 
 local vtable = {
-  name = 'error_tester',
+  name = 'metatable_tester',
   disconnect = noop,
   destroy = noop,
   filter = noop,
