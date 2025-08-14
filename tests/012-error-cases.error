@@ -1,9 +1,9 @@
-Runtime error near line 7: __fromsqlite must return a table or userdata, got string
-Runtime error near line 11: __fromsqlite must return a table or userdata, got nil
-Runtime error near line 15: Error in __tosqlite: [string "return {__fromsqlite = function(value) return..."]:1: tosqlite error
-Runtime error near line 19: __fromsqlite must be a function, got nil
-Runtime error near line 23: __fromsqlite must be a function, got string
-Runtime error near line 27: __tosqlite must be a function, got nil
-Runtime error near line 31: __tosqlite must be a function, got string
-Runtime error near line 35: __tosqlite must return nil, boolean, number, or string, got function
-Runtime error near line 39: __fromsqlite error: [string "return {__fromsqlite = function(value) error ..."]:1: fromsqlite error
+Runtime error near line 16: __fromsqlite must return a table or userdata, got string
+Runtime error near line 29: __fromsqlite must return a table or userdata, got nil
+Runtime error near line 42: Error in __tosqlite: [string "..."]:7: tosqlite error
+Runtime error near line 52: __fromsqlite must be a function, got nil
+Runtime error near line 63: __fromsqlite must be a function, got string
+Runtime error near line 73: __tosqlite must be a function, got nil
+Runtime error near line 84: __tosqlite must be a function, got string
+Runtime error near line 97: __tosqlite must return nil, boolean, number, or string, got function
+Runtime error near line 110: __fromsqlite error: [string "..."]:4: fromsqlite error
