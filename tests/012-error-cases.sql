@@ -108,3 +108,38 @@ return {
 }
 ');
 SELECT trim(data) FROM test9;
+
+-- __tosqlite returns unsupported type (thread)
+CREATE VIRTUAL TABLE test10 USING error_tester('
+return {
+  __fromsqlite = function(value)
+    return { data = value }
+  end,
+  __tosqlite = function(value)
+    return coroutine.create(function() end)
+  end,
+}
+');
+SELECT trim(data) FROM test10;
+
+-- No metatable (table without metatable)
+CREATE VIRTUAL TABLE test11 USING error_tester('
+return {
+  mode = "no_metatable",
+}
+');
+SELECT trim(data) FROM test11;
+
+-- Unmapped metatable (metatable not registered with subtype mapping)
+CREATE VIRTUAL TABLE test12 USING error_tester('
+return {
+  mode = "unmapped",
+  __tosqlite = function(value)
+    return value.data
+  end,
+  __fromsqlite = function(value)
+    return { data = value }
+  end,
+}
+');
+SELECT trim(data) FROM test12;

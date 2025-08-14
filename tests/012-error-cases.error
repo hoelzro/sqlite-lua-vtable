@@ -7,3 +7,6 @@ Runtime error near line 73: __tosqlite must be a function, got nil
 Runtime error near line 84: __tosqlite must be a function, got string
 Runtime error near line 97: __tosqlite must return nil, boolean, number, or string, got function
 Runtime error near line 110: __fromsqlite error: [string "..."]:4: fromsqlite error
+Runtime error near line 123: __tosqlite must return nil, boolean, number, or string, got thread
+Runtime error near line 131: Table/userdata without metatable cannot be converted to SQLite
+Runtime error near line 145: Metatable not registered with a subtype mapping
