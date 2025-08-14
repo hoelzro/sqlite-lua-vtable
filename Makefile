@@ -16,7 +16,8 @@ test:
 
 format:
 	clang-format -i lua-vtable.c
-	stylua counter.lua tests/examples/*.lua
+	stylua counter.lua format-inline-lua.lua tests/examples/*.lua
+	./format-inline-lua.lua tests/012-error-cases.sql
 
 clean:
 	rm -f *.o *.so
