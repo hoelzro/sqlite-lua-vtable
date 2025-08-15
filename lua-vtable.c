@@ -24,6 +24,8 @@
 
 SQLITE_EXTENSION_INIT1;
 
+#define LSQLITE3_DB_METATABLE ":sqlite3"
+
 static void *
 sqlite_lua_allocator(void *ud, void *ptr, size_t osize, size_t nsize)
 {
@@ -56,6 +58,7 @@ struct script_module_data {
     int rollback_ref;
     int rename_ref;
     int find_function_ref;
+    int open_ptr_ref;
 };
 
 struct script_module_vtab {
@@ -71,12 +74,11 @@ struct script_module_cursor {
 };
 
 static void
-push_db(lua_State *L, sqlite3 *db)
+push_db(lua_State *L, struct script_module_data *aux, sqlite3 *db)
 {
-    sqlite3 **lua_db = lua_newuserdata(L, sizeof(sqlite3 *));
-    *lua_db = db;
-    luaL_getmetatable(L, "sqlite3*");
-    lua_setmetatable(L, -2);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, aux->open_ptr_ref);
+    lua_pushlightuserdata(L, db);
+    lua_call(L, 1, 1);
 }
 
 static void
@@ -118,7 +120,7 @@ lua_vtable_create(sqlite3 *db, void *_aux, int argc, const char *const *argv, sq
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, aux->create_ref);
-    push_db(L, db);
+    push_db(L, aux, db);
     push_arg_strings(L, argc, argv);
     status = lua_pcall(L, 2, 2, 0);
 
@@ -154,7 +156,7 @@ lua_vtable_connect(sqlite3 *db, void *_aux, int argc, const char *const *argv, s
     int status;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, aux->connect_ref);
-    push_db(L, db);
+    push_db(L, aux, db);
     push_arg_strings(L, argc, argv);
     status = lua_pcall(L, 2, 2, 0);
 
@@ -861,7 +863,8 @@ cleanup_script_module(void *_aux)
 static sqlite3 *
 to_sqlite3(lua_State *L, int idx)
 {
-    return *((sqlite3 **) luaL_checkudata(L, idx, "sqlite3*"));
+    struct { lua_State *L; sqlite3 *db; } *db = luaL_checkudata(L, idx, LSQLITE3_DB_METATABLE);
+    return db->db;
 }
 
 static int
@@ -887,26 +890,39 @@ lua_sqlite3_declare_vtab(lua_State *L)
 }
 
 static int
-lua_sqlite3_get_ptr(lua_State *L)
+lua_sqlite3_no_close(lua_State *L)
 {
-    // XXX how can you be sure the SQLite versions match?
-    lua_pushlightuserdata(L, to_sqlite3(L, 1));
-    return 1;
+    return luaL_error(L, "cannot close database");
 }
 
-static luaL_Reg lua_sqlite3_methods[] = {
-    {"declare_vtab", lua_sqlite3_declare_vtab},
-    {"get_ptr", lua_sqlite3_get_ptr},
-    {NULL, NULL},
-};
+static int
+lua_sqlite3_noop(lua_State *L)
+{
+    return 0;
+}
 
 static void
-set_up_metatables(lua_State *L)
+set_up_metatables(lua_State *L, struct script_module_data *aux)
 {
-    luaL_newmetatable(L, "sqlite3*");
-    luaL_newlib(L, lua_sqlite3_methods);
-    lua_setfield(L, -2, "__index");
+    lua_getglobal(L, "require");
+    lua_pushliteral(L, "lsqlite3");
+    if(lua_pcall(L, 1, 1, 0) != LUA_OK) {
+        luaL_error(L, "require lsqlite3 failed: %s", lua_tostring(L, -1));
+    }
+
+    lua_getfield(L, -1, "open_ptr");
+    aux->open_ptr_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    luaL_getmetatable(L, LSQLITE3_DB_METATABLE);
+    lua_pushcfunction(L, lua_sqlite3_declare_vtab);
+    lua_setfield(L, -2, "declare_vtab");
+    lua_pushcfunction(L, lua_sqlite3_no_close);
+    lua_setfield(L, -2, "close");
+    lua_pushcfunction(L, lua_sqlite3_noop);
+    lua_setfield(L, -2, "__gc");
     lua_pop(L, 1);
+
+    lua_pop(L, 1); // pop module table
 }
 
 static void
@@ -920,7 +936,10 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
     L = lua_newstate(sqlite_lua_allocator, NULL);
     luaL_openlibs(L);
 
-    set_up_metatables(L);
+    struct script_module_data *script_module_aux = sqlite3_malloc(sizeof(struct script_module_data));
+    memset(script_module_aux, 0, sizeof(struct script_module_data));
+    script_module_aux->L = L;
+    set_up_metatables(L, script_module_aux);
 
     if(is_source_file) {
         status = luaL_dofile(L, source);
@@ -938,8 +957,6 @@ create_module(sqlite3_context *ctx, const char *source, int is_source_file)
     const char *module_name = lua_tostring(L, -1);
 
     sqlite3_module *script_module = sqlite3_malloc(sizeof(sqlite3_module));
-    struct script_module_data *script_module_aux = sqlite3_malloc(sizeof(struct script_module_data));
-
     memcpy(script_module, &lua_vtable_module, sizeof(sqlite3_module));
 
     lua_getfield(L, -2, "connect");

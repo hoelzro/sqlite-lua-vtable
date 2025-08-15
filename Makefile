@@ -12,14 +12,15 @@ default: lua-vtable.so
 	$(CC) $(CFLAGS) -c $^
 
 test:
-	for sql in tests/*.sql; do                                                        \
-		sqlite3 :memory: ".read $$sql" || exit 1                                ; \
+	for sql in tests/*.sql; do \
+		sqlite3 :memory: < $$sql > testcase-out.txt || exit 1                ; \
 		diff -q testcase-out.txt tests/$$(basename $$sql .sql).output || exit 1 ; \
-	done
+	done; \
+	rm -f testcase-out.txt
 
 format:
 	clang-format -i lua-vtable.c
 	stylua counter.lua tests/examples/*.lua
 
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.so testcase-out.txt

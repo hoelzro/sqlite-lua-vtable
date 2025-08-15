@@ -1,0 +1,4 @@
+*.o
+*.so
+testcase-out.txt
+lsqlite3_v096*
