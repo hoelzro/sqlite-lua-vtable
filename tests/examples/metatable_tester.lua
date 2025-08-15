@@ -76,7 +76,15 @@ function vtable.find_function(vtab, argc, name)
   if name == 'trim' and argc == 1 then
     return function(value)
       -- XXX check metatable or something
-      return value
+      return value.data
+    end
+  elseif name == 'test_fn' and argc == 1 then
+    return function(value)
+      local mt = assert(getmetatable(value))
+
+      return setmetatable({
+        data = value.data:gsub('^test_', 'transformed_'),
+      }, mt)
     end
   end
 end
