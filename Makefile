@@ -11,7 +11,7 @@ default: lua-vtable.so
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^
 
-test: test-helper.so
+test: default test-helper.so
 	./run-tests.sh
 
 format:
