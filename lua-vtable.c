@@ -282,13 +282,13 @@ pop_index_info(lua_State *L, struct script_module_data *data, void *aux)
     int i;
 
     lua_getfield(L, -1, "constraint_usage");
-    lua_len(L, -1);
-    int returned_constraint_usage_len = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    // XXX test that returning a short table is OK
-    for(i = 0; i < info->nConstraint && (i + 1) <= returned_constraint_usage_len; i++) {
+    for(i = 0; i < info->nConstraint; i++) {
         lua_rawgeti(L, -1, i + 1);
+
+        if(lua_isnil(L, -1)) {
+            lua_pop(L, 1);
+            continue;
+        }
 
         lua_getfield(L, -1, "argv_index");
         if(!lua_isnil(L, -1)) {
